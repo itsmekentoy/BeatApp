@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import apiConnector from './utils/apiConnector';
 
 const EmailConfig = () => {
   const { width } = useWindowDimensions();
@@ -13,6 +14,27 @@ const EmailConfig = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [logoUri, setLogoUri] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const fetchEmailConfig = async () => {
+      try {
+        const response = await apiConnector.request('Beat/email-management');
+        if (response.ok) {
+          const data = await response.json();
+          setEmail(data.email);
+          setPassword(data.password);
+          setLogoUri(data.filepath);
+        } else {
+          Alert.alert('Error', 'Failed to fetch email configuration');
+        }
+      } catch (error) {
+        console.error('Error fetching email configuration:', error);
+        Alert.alert('Error', 'An unexpected error occurred');
+      }
+    };
+
+    fetchEmailConfig();
+  }, []);
 
   const pickLogo = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -34,7 +56,7 @@ const EmailConfig = () => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
@@ -47,10 +69,38 @@ const EmailConfig = () => {
       return;
     }
 
-    // Here you would typically save to backend/database
-    Alert.alert('Success', 'Email configuration saved successfully', [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
+    const formData = new FormData();
+    formData.append('email', email);
+    formData.append('password', password);
+    if (logoUri) {
+      formData.append('filepath', {
+        uri: logoUri,
+        name: 'logo.jpg',
+        type: 'image/jpeg',
+      });
+    }
+
+    try {
+      const response = await apiConnector.request('Beat/email-management/create-or-update', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (response.ok) {
+        Alert.alert('Success', 'Email configuration updated successfully', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.message || 'Failed to update email configuration');
+      }
+    } catch (error) {
+      console.error('Error updating email configuration:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
   };
 
   return (

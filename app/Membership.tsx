@@ -1,13 +1,20 @@
+import apiConnector from '@/app/utils/apiConnector';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Alert, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 interface MembershipPlan {
-  id: string;
+  id: number;
   name: string;
-  duration: string;
-  price: number;
+  description: string;
+  price: string;
+  duration_days: number;
+  status: number;
+  created_by: number;
+  updated_by: number;
+  created_at: string;
+  updated_at: string;
 }
 
 const Membership = () => {
@@ -15,14 +22,8 @@ const Membership = () => {
   const isTablet = width >= 600;
   const router = useRouter();
 
-  const [plans, setPlans] = useState<MembershipPlan[]>([
-    { id: '1', name: 'Basic Plan', duration: 'Monthly', price: 1500 },
-    { id: '2', name: 'Premium Plan', duration: 'Monthly', price: 2500 },
-    { id: '3', name: 'Student Plan', duration: 'Monthly', price: 1200 },
-    { id: '4', name: 'Annual Plan', duration: 'Yearly', price: 15000 },
-    { id: '5', name: 'Lifetime Plan', duration: 'Lifetime', price: 50000 },
-  ]);
-
+  const [plans, setPlans] = useState<MembershipPlan[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<MembershipPlan | null>(null);
@@ -30,6 +31,7 @@ const Membership = () => {
     name: '',
     duration: '',
     price: '',
+    description: '',
   });
 
   const durationOptions = [
@@ -42,55 +44,149 @@ const Membership = () => {
     'Lifetime',
   ];
 
+  const durationMapping: { [key: number]: string } = {
+    1: 'Daily',
+    7: 'Weekly',
+    30: 'Monthly',
+    90: 'Quarterly',
+    180: 'Semi-Annual',
+    365: 'Yearly',
+  };
+
+  const getDurationLabel = (days: number): string => {
+    return durationMapping[days] || 'Lifetime';
+  };
+
   const [showDurationPicker, setShowDurationPicker] = useState(false);
 
+  const fetchMembershipPlans = async () => {
+    try {
+      console.log('Fetching membership plans...');
+      const response = await apiConnector.request('Beat/MembershipPlans');
+      console.log('Response status:', response.status);
+      const data = await response.json();
+      console.log('Response data:', data);
+
+      const formattedPlans = data.map((plan: MembershipPlan) => ({
+        ...plan,
+        price: parseFloat(plan.price) || 0, // Ensure price is a valid number
+        duration_days: typeof plan.duration_days === 'string' ? parseInt(plan.duration_days, 10) || 0 : plan.duration_days, // Ensure duration is a valid integer
+      }));
+      setPlans(formattedPlans);
+    } catch (error) {
+      console.error('Error fetching membership plans:', error);
+      Alert.alert('Error', 'Failed to fetch membership plans. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMembershipPlans();
+  }, []);
+
   // Handle add plan
-  const handleAddPlan = () => {
-    if (!formData.name.trim() || !formData.duration || !formData.price) {
-      Alert.alert('Error', 'Please fill in all fields');
+  const handleAddPlan = async () => {
+    if (!formData.name?.trim() || !formData.duration || !formData.price) {
+      Alert.alert('Error', 'Please fill in all required fields: Name, Price, and Duration');
       return;
     }
 
-    const newPlan: MembershipPlan = {
-      id: Date.now().toString(),
-      name: formData.name,
-      duration: formData.duration,
-      price: parseFloat(formData.price),
-    };
+    try {
+      setLoading(true);
+      const response = await apiConnector.request('Beat/MembershipPlan/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description || null, // Nullable field
+          price: parseFloat(formData.price) || 0, // Ensure price is a number
+          duration_days: parseInt(formData.duration, 10) || 0, // Ensure duration is an integer
+        }),
+      });
 
-    setPlans([...plans, newPlan]);
-    setShowAddModal(false);
-    resetForm();
-    Alert.alert('Success', 'Membership plan added successfully');
+      if (response.ok) {
+        const newPlan = await response.json();
+        console.log('Server response:', newPlan); // Log the server response for debugging
+
+        if (!newPlan || typeof newPlan !== 'object') {
+          Alert.alert('Error', 'Unexpected response from server. Please try again later.');
+          return;
+        }
+
+        // Ensure the new plan has a valid `id`
+        const validPlan = {
+          ...newPlan,
+          id: newPlan.id || Date.now(), // Use a fallback `id` if missing
+        };
+
+        setPlans([...plans, validPlan]);
+        setShowAddModal(false);
+        resetForm();
+        Alert.alert('Success', 'Membership plan added successfully');
+
+        // Re-fetch membership plans after adding a new plan
+        await fetchMembershipPlans();
+      } else if (response.status === 404) {
+        Alert.alert('Error', 'Endpoint not found (404). Please check the URL.');
+      } else {
+        const errorData = await response.json();
+        console.log('Error response:', errorData); // Log error details for debugging
+        Alert.alert('Error', errorData.message || 'Failed to add membership plan');
+      }
+    } catch (error) {
+      console.error('Error adding membership plan:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle edit plan
-  const handleEditPlan = () => {
-    if (!formData.name.trim() || !formData.duration || !formData.price || !selectedPlan) {
+  const handleEditPlan = async () => {
+    if (!formData.name.trim() || !formData.duration || !formData.price || !formData.description.trim() || !selectedPlan) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
-    const updatedPlans = plans.map(plan =>
-      plan.id === selectedPlan.id
-        ? {
-            ...plan,
-            name: formData.name,
-            duration: formData.duration,
-            price: parseFloat(formData.price),
-          }
-        : plan
-    );
+    try {
+      setLoading(true);
+      const response = await apiConnector.request(`Beat/MembershipPlan/update/${selectedPlan.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description || null, // Nullable field
+          price: parseFloat(formData.price),
+          duration_days: parseInt(formData.duration, 10),
+        }),
+      });
 
-    setPlans(updatedPlans);
-    setShowEditModal(false);
-    setSelectedPlan(null);
-    resetForm();
-    Alert.alert('Success', 'Membership plan updated successfully');
+      if (response.ok) {
+        await fetchMembershipPlans(); // Refresh the membership plans
+        setShowEditModal(false);
+        setSelectedPlan(null);
+        resetForm();
+        Alert.alert('Success', 'Membership plan updated successfully');
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.message || 'Failed to update membership plan');
+      }
+    } catch (error) {
+      console.error('Error updating membership plan:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle delete plan
-  const handleDeletePlan = (plan: MembershipPlan) => {
+  const handleDeletePlan = async (plan: MembershipPlan) => {
     Alert.alert(
       'Delete Plan',
       `Are you sure you want to delete "${plan.name}"?`,
@@ -99,9 +195,26 @@ const Membership = () => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            setPlans(plans.filter(p => p.id !== plan.id));
-            Alert.alert('Success', 'Membership plan deleted successfully');
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const response = await apiConnector.request(`Beat/MembershipPlan/delete/${plan.id}`, {
+                method: 'DELETE',
+              });
+
+              if (response.ok) {
+                await fetchMembershipPlans(); // Refresh the membership plans
+                Alert.alert('Success', 'Membership plan deleted successfully');
+              } else {
+                const errorData = await response.json();
+                Alert.alert('Error', errorData.message || 'Failed to delete membership plan');
+              }
+            } catch (error) {
+              console.error('Error deleting membership plan:', error);
+              Alert.alert('Error', 'An unexpected error occurred');
+            } finally {
+              setLoading(false);
+            }
           },
         },
       ]
@@ -113,18 +226,18 @@ const Membership = () => {
     setSelectedPlan(plan);
     setFormData({
       name: plan.name,
-      duration: plan.duration,
-      price: plan.price.toString(),
+      duration: plan.duration_days.toString(), // Ensure duration is a string
+      price: plan.price.toString(), // Ensure price is a string
+      description: plan.description,
     });
     setShowEditModal(true);
-  };
-
-  // Reset form
+  };  // Reset form
   const resetForm = () => {
     setFormData({
       name: '',
       duration: '',
       price: '',
+      description: '',
     });
   };
 
@@ -132,14 +245,17 @@ const Membership = () => {
   const renderPlanCard = ({ item }: { item: MembershipPlan }) => (
     <View style={[styles.planCard, isTablet && styles.planCardTablet]}>
       <View style={styles.planHeader}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={[styles.planName, isTablet && { fontSize: 20 }]}>{item.name}</Text>
+          <Text style={[styles.planDescription, isTablet && { fontSize: 14 }]}>
+            {item.description}
+          </Text>
           <Text style={[styles.planDuration, isTablet && { fontSize: 15 }]}>
-            <Icon name="time-outline" size={isTablet ? 16 : 14} color="#666" /> {item.duration}
+            <Icon name="time-outline" size={isTablet ? 16 : 14} color="#666" /> {item.duration_days} days
           </Text>
         </View>
         <Text style={[styles.planPrice, isTablet && { fontSize: 26 }]}>
-          ₱{item.price.toLocaleString()}
+          ₱{parseFloat(item.price).toLocaleString()}
         </Text>
       </View>
 
@@ -178,21 +294,33 @@ const Membership = () => {
       >
         <View style={styles.pickerContainer}>
           <Text style={styles.pickerTitle}>Select Duration</Text>
-          {durationOptions.map((option) => (
+          {Object.entries(durationMapping).map(([days, label]) => (
             <TouchableOpacity
-              key={option}
+              key={days}
               style={styles.pickerOption}
               onPress={() => {
-                setFormData({ ...formData, duration: option });
+                setFormData({ ...formData, duration: label });
                 setShowDurationPicker(false);
               }}
             >
-              <Text style={styles.pickerOptionText}>{option}</Text>
-              {formData.duration === option && (
+              <Text style={styles.pickerOptionText}>{label}</Text>
+              {formData.duration === label && (
                 <Icon name="checkmark" size={20} color="#FF6B35" />
               )}
             </TouchableOpacity>
           ))}
+          <TouchableOpacity
+            style={styles.pickerOption}
+            onPress={() => {
+              setFormData({ ...formData, duration: 'Lifetime' });
+              setShowDurationPicker(false);
+            }}
+          >
+            <Text style={styles.pickerOptionText}>Lifetime</Text>
+            {formData.duration === 'Lifetime' && (
+              <Icon name="checkmark" size={20} color="#FF6B35" />
+            )}
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
     </Modal>
@@ -223,54 +351,79 @@ const Membership = () => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.modalBody}>
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Plan Name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., Premium Plan"
-                value={formData.name}
-                onChangeText={(text) => setFormData({ ...formData, name: text })}
-              />
-            </View>
+          <ScrollView 
+            style={styles.modalBodyScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled={true}
+          >
+            <View style={styles.modalBody}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Plan Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., Premium Plan"
+                  value={formData.name}
+                  onChangeText={(text) => setFormData({ ...formData, name: text })}
+                />
+              </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Duration</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Duration (in days)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., 30"
+                  value={formData.duration}
+                  onChangeText={(text) => setFormData({ ...formData, duration: text })}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Description</Text>
+                <TextInput
+                  style={[styles.input, styles.textArea]}
+                  placeholder="e.g., Perfect for beginners and casual gym-goers"
+                  value={formData.description}
+                  onChangeText={(text) => setFormData({ ...formData, description: text })}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Price (₱)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., 1500"
+                  value={formData.price}
+                  onChangeText={(text) => setFormData({ ...formData, price: text })}
+                  keyboardType="numeric"
+                />
+              </View>
+
               <TouchableOpacity
-                style={styles.durationInput}
-                onPress={() => setShowDurationPicker(true)}
+                style={styles.saveButton}
+                onPress={isEdit ? handleEditPlan : handleAddPlan}
               >
-                <Text style={formData.duration ? styles.durationText : styles.placeholderText}>
-                  {formData.duration || 'Select Duration'}
+                <Text style={styles.saveButtonText}>
+                  {isEdit ? 'Update' : 'Add'} Plan
                 </Text>
-                <Icon name="chevron-down" size={20} color="#999" />
               </TouchableOpacity>
             </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Price (₱)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g., 1500"
-                value={formData.price}
-                onChangeText={(text) => setFormData({ ...formData, price: text })}
-                keyboardType="numeric"
-              />
-            </View>
-
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={isEdit ? handleEditPlan : handleAddPlan}
-            >
-              <Text style={styles.saveButtonText}>
-                {isEdit ? 'Update' : 'Add'} Plan
-              </Text>
-            </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
   );
+
+  if (loading) {
+    return (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color="#FF6B35" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -301,7 +454,7 @@ const Membership = () => {
       <FlatList
         data={plans}
         renderItem={renderPlanCard}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
@@ -398,6 +551,12 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 6,
   },
+  planDescription: {
+    fontSize: 13,
+    color: '#777',
+    marginBottom: 8,
+    lineHeight: 18,
+  },
   planDuration: {
     fontSize: 14,
     color: '#666',
@@ -476,7 +635,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderRadius: 16,
     width: '90%',
-    maxHeight: '80%',
+    height: '70%',
+    flexDirection: 'column',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -485,7 +645,7 @@ const styles = StyleSheet.create({
   },
   modalContentTablet: {
     width: '70%',
-    maxHeight: '70%',
+    height: '70%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -503,6 +663,9 @@ const styles = StyleSheet.create({
   modalBody: {
     padding: 20,
   },
+  modalBodyScroll: {
+    flex: 1,
+  },
   formGroup: {
     marginBottom: 16,
   },
@@ -519,6 +682,10 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 15,
     backgroundColor: '#FAFAFA',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
   },
   durationInput: {
     flexDirection: 'row',
@@ -583,6 +750,12 @@ const styles = StyleSheet.create({
   pickerOptionText: {
     fontSize: 16,
     color: '#333',
+  },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
   },
 });
 

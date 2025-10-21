@@ -1,9 +1,11 @@
+import apiConnector from '@/app/utils/apiConnector';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 interface Permission {
+  viewFinancialOverview: boolean;
   membershipPlan: boolean;
   customerAdd: boolean;
   customerUpdate: boolean;
@@ -37,6 +39,7 @@ const UserManagement = () => {
       email: 'admin@gym.com',
       password: 'admin123',
       permissions: {
+        viewFinancialOverview: true,
         membershipPlan: true,
         customerAdd: true,
         customerUpdate: true,
@@ -55,6 +58,7 @@ const UserManagement = () => {
       email: 'staff@gym.com',
       password: 'staff123',
       permissions: {
+        viewFinancialOverview: false,
         membershipPlan: false,
         customerAdd: true,
         customerUpdate: true,
@@ -80,6 +84,7 @@ const UserManagement = () => {
   });
 
   const [permissions, setPermissions] = useState<Permission>({
+    viewFinancialOverview: false,
     membershipPlan: false,
     customerAdd: false,
     customerUpdate: false,
@@ -91,7 +96,36 @@ const UserManagement = () => {
     userManagement: false,
   });
 
-  const handleAddUser = () => {
+  const fetchUsers = React.useCallback(async () => {
+    try {
+      const response = await apiConnector.request('Beat/users');
+      if (response.ok) {
+        const data = await response.json();
+        const formattedUsers = data.map((user: any) => ({
+          id: user.id.toString(),
+          name: user.name,
+          role: user.role,
+          email: user.email,
+          permissions: user.permissions.reduce((acc: any, perm: any) => {
+            acc[perm.permission] = perm.is_granted === 1; // Default is false, true if granted
+            return acc;
+          }, {}),
+        }));
+        setUsers(formattedUsers);
+      } else {
+        Alert.alert('Error', 'Failed to fetch users');
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const handleAddUser = async () => {
     if (!formData.name.trim() || !formData.role.trim() || !formData.email.trim() || !formData.password.trim()) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -103,24 +137,45 @@ const UserManagement = () => {
       return;
     }
 
-    const newUser: User = {
-      id: Date.now().toString(),
-      name: formData.name,
-      role: formData.role,
-      email: formData.email,
-      password: formData.password,
-      permissions: { ...permissions },
-    };
+    const permissionsArray = Object.keys(permissions).map((key, index) => ({
+      permission: (index + 1).toString(),
+      is_granted: permissions[key as keyof Permission] ? 1 : 0,
+    }));
 
-    setUsers([...users, newUser]);
-    setShowAddModal(false);
-    resetForm();
-    Alert.alert('Success', 'User added successfully');
+    try {
+      const response = await apiConnector.request('Beat/users/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          role: formData.role,
+          email: formData.email,
+          password: formData.password,
+          permissions: permissionsArray,
+        }),
+      });
+
+      if (response.ok) {
+        const newUser = await response.json();
+        await fetchUsers(); // Refetch the user list after successful addition
+        setShowAddModal(false);
+        resetForm();
+        Alert.alert('Success', 'User added successfully');
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.message || 'Failed to add user');
+      }
+    } catch (error) {
+      console.error('Error adding user:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
   };
 
-  const handleEditUser = () => {
-    if (!formData.name.trim() || !formData.role.trim() || !formData.email.trim() || !formData.password.trim() || !selectedUser) {
-      Alert.alert('Error', 'Please fill in all fields');
+  const handleEditUser = async () => {
+    if (!formData.name.trim() || !formData.role.trim() || !formData.email.trim() || !selectedUser) {
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
 
@@ -130,24 +185,45 @@ const UserManagement = () => {
       return;
     }
 
-    const updatedUsers = users.map(user =>
-      user.id === selectedUser.id
-        ? {
-            ...user,
-            name: formData.name,
-            role: formData.role,
-            email: formData.email,
-            password: formData.password,
-            permissions: { ...permissions },
-          }
-        : user
-    );
+    const permissionsArray = Object.keys(permissions).map((key, index) => ({
+      permission: (index + 1).toString(),
+      is_granted: permissions[key as keyof Permission] ? 1 : 0,
+    }));
 
-    setUsers(updatedUsers);
-    setShowEditModal(false);
-    setSelectedUser(null);
-    resetForm();
-    Alert.alert('Success', 'User updated successfully');
+    const updatedUser: any = {
+      name: formData.name,
+      role: formData.role,
+      email: formData.email,
+      permissions: permissionsArray,
+    };
+
+    if (formData.password && formData.password.trim()) {
+      updatedUser.password = formData.password;
+    }
+
+    try {
+      const response = await apiConnector.request(`Beat/users/update/${selectedUser.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedUser),
+      });
+
+      if (response.ok) {
+        await fetchUsers(); // Refetch the user list after successful update
+        setShowEditModal(false);
+        setSelectedUser(null);
+        resetForm();
+        Alert.alert('Success', 'User updated successfully');
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.message || 'Failed to update user');
+      }
+    } catch (error) {
+      console.error('Error updating user:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
   };
 
   const openEditModal = (user: User) => {
@@ -158,7 +234,57 @@ const UserManagement = () => {
       email: user.email,
       password: user.password,
     });
-    setPermissions({ ...user.permissions });
+
+    let permissionsArray = user.permissions;
+
+    // Check if permissions are in object format and convert to array
+    if (!Array.isArray(permissionsArray) && typeof permissionsArray === 'object') {
+      permissionsArray = Object.entries(permissionsArray).map(([key, value]) => ({
+        permission: key,
+        is_granted: value ? 1 : 0,
+      }));
+    }
+
+    if (!Array.isArray(permissionsArray)) {
+      console.error('Invalid permissions format:', user.permissions);
+      Alert.alert('Error', 'User permissions data is invalid. Defaulting to no permissions.');
+      permissionsArray = [];
+    }
+
+    const permissionMapping: { [key: string]: keyof Permission } = {
+      "1": "viewFinancialOverview",
+      "2": "membershipPlan",
+      "3": "customerAdd",
+      "4": "customerUpdate",
+      "5": "customerDelete",
+      "6": "addTransaction",
+      "7": "expenseAdd",
+      "8": "expenseUpdate",
+      "9": "expenseDelete",
+      "10": "userManagement",
+    };
+
+    const mappedPermissions = permissionsArray.reduce((acc: Permission, perm: any) => {
+      const key = permissionMapping[perm.permission];
+      if (key) {
+        acc[key] = perm.is_granted === 1;
+      }
+      return acc;
+    }, {
+      viewFinancialOverview: false,
+      membershipPlan: false,
+      customerAdd: false,
+      customerUpdate: false,
+      customerDelete: false,
+      addTransaction: false,
+      expenseAdd: false,
+      expenseUpdate: false,
+      expenseDelete: false,
+      userManagement: false,
+    });
+
+    console.log('Mapped permissions:', mappedPermissions);
+    setPermissions(mappedPermissions);
     setShowEditModal(true);
   };
 
@@ -171,9 +297,23 @@ const UserManagement = () => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            setUsers(users.filter(u => u.id !== user.id));
-            Alert.alert('Success', 'User deleted successfully');
+          onPress: async () => {
+            try {
+              const response = await apiConnector.request(`Beat/users/delete/${user.id}`, {
+                method: 'DELETE',
+              });
+
+              if (response.ok) {
+                setUsers(users.filter(u => u.id !== user.id));
+                Alert.alert('Success', 'User deleted successfully');
+              } else {
+                const errorData = await response.json();
+                Alert.alert('Error', errorData.message || 'Failed to delete user');
+              }
+            } catch (error) {
+              console.error('Error deleting user:', error);
+              Alert.alert('Error', 'An unexpected error occurred');
+            }
           },
         },
       ]
@@ -187,22 +327,14 @@ const UserManagement = () => {
       email: '',
       password: '',
     });
-    setPermissions({
-      membershipPlan: false,
-      customerAdd: false,
-      customerUpdate: false,
-      customerDelete: false,
-      addTransaction: false,
-      expenseAdd: false,
-      expenseUpdate: false,
-      expenseDelete: false,
-      userManagement: false,
-    });
     setShowPassword(false);
   };
 
-  const togglePermission = (key: keyof Permission) => {
-    setPermissions({ ...permissions, [key]: !permissions[key] });
+  const togglePermission = (permissionKey: keyof Permission) => {
+    setPermissions((prevPermissions) => ({
+      ...prevPermissions,
+      [permissionKey]: !prevPermissions[permissionKey],
+    }));
   };
 
   const PermissionCheckbox = ({ label, checked, onToggle }: { label: string; checked: boolean; onToggle: () => void }) => (
@@ -406,47 +538,52 @@ const UserManagement = () => {
 
                 <View style={styles.permissionsGrid}>
                   <PermissionCheckbox
-                    label="Membership Plan"
+                    label="1. View Financial Overview"
+                    checked={permissions.viewFinancialOverview}
+                    onToggle={() => togglePermission('viewFinancialOverview')}
+                  />
+                  <PermissionCheckbox
+                    label="2. Membership Plan"
                     checked={permissions.membershipPlan}
                     onToggle={() => togglePermission('membershipPlan')}
                   />
                   <PermissionCheckbox
-                    label="Customer Add"
+                    label="3. Customer Add"
                     checked={permissions.customerAdd}
                     onToggle={() => togglePermission('customerAdd')}
                   />
                   <PermissionCheckbox
-                    label="Customer Update"
+                    label="4. Customer Update"
                     checked={permissions.customerUpdate}
                     onToggle={() => togglePermission('customerUpdate')}
                   />
                   <PermissionCheckbox
-                    label="Customer Delete"
+                    label="5. Customer Delete"
                     checked={permissions.customerDelete}
                     onToggle={() => togglePermission('customerDelete')}
                   />
                   <PermissionCheckbox
-                    label="Add Transaction"
+                    label="6. Add Transaction"
                     checked={permissions.addTransaction}
                     onToggle={() => togglePermission('addTransaction')}
                   />
                   <PermissionCheckbox
-                    label="Expense Add"
+                    label="7. Expense Add"
                     checked={permissions.expenseAdd}
                     onToggle={() => togglePermission('expenseAdd')}
                   />
                   <PermissionCheckbox
-                    label="Expense Update"
+                    label="8. Expense Update"
                     checked={permissions.expenseUpdate}
                     onToggle={() => togglePermission('expenseUpdate')}
                   />
                   <PermissionCheckbox
-                    label="Expense Delete"
+                    label="9. Expense Delete"
                     checked={permissions.expenseDelete}
                     onToggle={() => togglePermission('expenseDelete')}
                   />
                   <PermissionCheckbox
-                    label="User Management"
+                    label="10. User Management"
                     checked={permissions.userManagement}
                     onToggle={() => togglePermission('userManagement')}
                   />
@@ -548,6 +685,10 @@ const UserManagement = () => {
                   </TouchableOpacity>
                 </View>
               </View>
+
+              <Text style={styles.passwordNote}>
+                Leave password blank if no changes are needed
+              </Text>
             </View>
 
             {/* Permissions */}
@@ -557,47 +698,52 @@ const UserManagement = () => {
 
               <View style={styles.permissionsGrid}>
                 <PermissionCheckbox
-                  label="Membership Plan"
+                  label="1. View Financial Overview"
+                  checked={permissions.viewFinancialOverview}
+                  onToggle={() => togglePermission('viewFinancialOverview')}
+                />
+                <PermissionCheckbox
+                  label="2.Membership Plan"
                   checked={permissions.membershipPlan}
                   onToggle={() => togglePermission('membershipPlan')}
                 />
                 <PermissionCheckbox
-                  label="Customer Add"
+                  label="3. Customer Add"
                   checked={permissions.customerAdd}
                   onToggle={() => togglePermission('customerAdd')}
                 />
                 <PermissionCheckbox
-                  label="Customer Update"
+                  label="4. Customer Update"
                   checked={permissions.customerUpdate}
                   onToggle={() => togglePermission('customerUpdate')}
                 />
                 <PermissionCheckbox
-                  label="Customer Delete"
+                  label="5. Customer Delete"
                   checked={permissions.customerDelete}
                   onToggle={() => togglePermission('customerDelete')}
                 />
                 <PermissionCheckbox
-                  label="Add Transaction"
+                  label="6. Add Transaction"
                   checked={permissions.addTransaction}
                   onToggle={() => togglePermission('addTransaction')}
                 />
                 <PermissionCheckbox
-                  label="Expense Add"
+                  label="7. Expense Add"
                   checked={permissions.expenseAdd}
                   onToggle={() => togglePermission('expenseAdd')}
                 />
                 <PermissionCheckbox
-                  label="Expense Update"
+                  label="8. Expense Update"
                   checked={permissions.expenseUpdate}
                   onToggle={() => togglePermission('expenseUpdate')}
                 />
                 <PermissionCheckbox
-                  label="Expense Delete"
+                  label="9. Expense Delete"
                   checked={permissions.expenseDelete}
                   onToggle={() => togglePermission('expenseDelete')}
                 />
                 <PermissionCheckbox
-                  label="User Management"
+                  label="10. User Management"
                   checked={permissions.userManagement}
                   onToggle={() => togglePermission('userManagement')}
                 />
@@ -905,6 +1051,12 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  passwordNote: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 8,
+    textAlign: 'center',
   },
 });
 

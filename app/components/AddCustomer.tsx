@@ -3,14 +3,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import NfcManager, { NfcTech } from 'react-native-nfc-manager';
+import NfcManager from 'react-native-nfc-manager';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 const steps = [
-  { icon: 'person' }, // Personal Information
-  { icon: 'scan' }, // RFID Scan
+  { icon: 'person' }, // Customer Information
   { icon: 'medical' }, // Medical Condition
-  { icon: 'card' }, // Membership Details
+  { icon: 'scan' }, // RFID Scan
+  { icon: 'card' }, // Subscription
   { icon: 'checkmark-done' }, // Confirmation
 ];
 
@@ -22,21 +22,19 @@ interface FormData {
   gender: string;
   dob: Date | null;
   age: string;
-  region: string;
-  province: string;
-  cityMunicipality: string;
-  barangay: string;
-  houseNoStreet: string;
-  zipCode: string;
+  address: string;
   email: string;
   phoneNumber: string;
   profileImage: string | null;
-  // Step 2: RFID
-  rfidNumber: string;
-  // Step 3: Medical & Membership
+  // Step 2: Medical
   medicalCondition: string;
+  // Step 3: RFID
+  rfidNumber: string;
+  // Step 4: Subscription
   membershipType: string;
   dateOfRegistration: Date;
+  startMembershipDate: Date | null;
+  membershipExpirationDate: Date | null;
 }
 
 const AddCustomer: React.FC = () => {
@@ -53,25 +51,23 @@ const AddCustomer: React.FC = () => {
     gender: '',
     dob: null,
     age: '',
-    region: '',
-    province: '',
-    cityMunicipality: '',
-    barangay: '',
-    houseNoStreet: '',
-    zipCode: '',
+    address: '',
     email: '',
     phoneNumber: '',
     profileImage: null,
-    rfidNumber: '',
     medicalCondition: '',
+    rfidNumber: '',
     membershipType: '',
     dateOfRegistration: new Date(),
+    startMembershipDate: null,
+    membershipExpirationDate: null,
   });
 
   const [showDobPicker, setShowDobPicker] = useState(false);
   const [showRegistrationPicker, setShowRegistrationPicker] = useState(false);
   const [showMembershipDropdown, setShowMembershipDropdown] = useState(false);
-  const [isNfcReading, setIsNfcReading] = useState(false);
+  const [showStartMembershipPicker, setShowStartMembershipPicker] = useState(false);
+  const [showExpirationPicker, setShowExpirationPicker] = useState(false);
 
   const membershipTypes = ['Monthly', 'Quarterly', 'Semi-Annual', 'Yearly'];
 
@@ -131,6 +127,22 @@ const AddCustomer: React.FC = () => {
     setShowRegistrationPicker(Platform.OS === 'ios');
     if (selectedDate) {
       setFormData(prev => ({ ...prev, dateOfRegistration: selectedDate }));
+    }
+  };
+
+  // Handle Start Membership Date change
+  const handleStartMembershipDateChange = (event: any, selectedDate?: Date) => {
+    setShowStartMembershipPicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setFormData(prev => ({ ...prev, startMembershipDate: selectedDate }));
+    }
+  };
+
+  // Handle Membership Expiration Date change
+  const handleExpirationDateChange = (event: any, selectedDate?: Date) => {
+    setShowExpirationPicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setFormData(prev => ({ ...prev, membershipExpirationDate: selectedDate }));
     }
   };
 
@@ -229,9 +241,8 @@ const AddCustomer: React.FC = () => {
       Alert.alert('Validation Error', 'Date of birth is required');
       return false;
     }
-    if (!formData.region.trim() || !formData.province.trim() || !formData.cityMunicipality.trim() || 
-        !formData.barangay.trim() || !formData.houseNoStreet.trim() || !formData.zipCode.trim()) {
-      Alert.alert('Validation Error', 'Complete address is required');
+    if (!formData.address.trim()) {
+      Alert.alert('Validation Error', 'Address is required');
       return false;
     }
     return true;
@@ -260,7 +271,7 @@ const AddCustomer: React.FC = () => {
     if (currentStep === 0 && !validateStep1()) {
       return;
     }
-    if (currentStep === 1 && !validateStep2()) {
+    if (currentStep === 2 && !validateStep2()) {
       return;
     }
     if (currentStep === 3 && !validateStep4()) {
@@ -270,105 +281,6 @@ const AddCustomer: React.FC = () => {
   };
 
   // Handle NFC Reading with Phone
-  const handleNfcReading = async () => {
-    let cleanedUp = false;
-    
-    const cleanup = async () => {
-      if (!cleanedUp) {
-        cleanedUp = true;
-        try {
-          await NfcManager.cancelTechnologyRequest();
-        } catch (ex) {
-          // Ignore cleanup errors
-        }
-        setIsNfcReading(false);
-      }
-    };
-
-    try {
-      setIsNfcReading(true);
-      
-      // Check if NFC is supported
-      const supported = await NfcManager.isSupported();
-      if (!supported) {
-        Alert.alert('NFC Not Supported', 'Your device does not support NFC technology.');
-        setIsNfcReading(false);
-        return;
-      }
-
-      // Check if NFC is enabled
-      const enabled = await NfcManager.isEnabled();
-      if (!enabled) {
-        Alert.alert(
-          'NFC Disabled',
-          'Please enable NFC in your device settings to scan tags.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => NfcManager.goToNfcSetting() }
-          ]
-        );
-        setIsNfcReading(false);
-        return;
-      }
-
-      // Request NFC technology - supports multiple tag types including keyfobs
-      // This will wait for a tag to be scanned
-      await NfcManager.requestTechnology([NfcTech.NfcA, NfcTech.NfcB, NfcTech.NfcF, NfcTech.NfcV], {
-        alertMessage: 'Hold your phone near the keyfob...',
-      });
-
-      // Get tag information - this should have the tag data now
-      const tag = await NfcManager.getTag();
-      
-      console.log('NFC Tag detected:', JSON.stringify(tag, null, 2));
-      
-      if (!tag) {
-        await cleanup();
-        Alert.alert('No Tag Detected', 'Please hold your phone closer to the keyfob and try again.');
-        return;
-      }
-
-      if (tag.id) {
-        // Convert tag ID to hex string format
-        let tagId: string;
-        if (typeof tag.id === 'string') {
-          // If already a string, use it directly or clean it
-          tagId = tag.id.replace(/:/g, '').toUpperCase();
-        } else if (Array.isArray(tag.id)) {
-          tagId = (tag.id as number[]).map((byte: number) => {
-            return ('0' + (byte & 0xFF).toString(16).toUpperCase()).slice(-2);
-          }).join('');
-        } else {
-          tagId = String(tag.id);
-        }
-
-        // Populate the RFID field with the tag ID
-        updateField('rfidNumber', tagId);
-        
-        await cleanup();
-        Alert.alert('Success!', `Keyfob scanned successfully!\n\nTag ID: ${tagId}`);
-      } else {
-        await cleanup();
-        Alert.alert('Error', 'Unable to read NFC tag ID. Please try again.');
-      }
-
-    } catch (ex: any) {
-      console.error('NFC Reading Error:', ex);
-      console.error('Error details:', JSON.stringify(ex, null, 2));
-      
-      await cleanup();
-      
-      // Check if user cancelled
-      if (ex.message && ex.message.includes('cancelled')) {
-        // User cancelled, don't show error
-        return;
-      }
-      
-      const errorMessage = ex?.message || String(ex);
-      Alert.alert('Scan Failed', `Error: ${errorMessage}\n\nMake sure NFC is enabled and hold your phone close to the keyfob.`);
-    }
-  };
-
   // Handle Hardware Scanner
   const handleHardwareScan = () => {
     // TODO: Implement hardware scanner integration
@@ -383,10 +295,10 @@ const AddCustomer: React.FC = () => {
     ]);
   };
 
-  // Render Step 1: Personal Information
+  // Render Step 1: Customer Information
   const renderStep1 = () => (
     <View style={styles.stepContent}>
-      <Text style={[styles.stepTitle, isTablet && { fontSize: 22 }]}>Personal Information</Text>
+      <Text style={[styles.stepTitle, isTablet && { fontSize: 22 }]}>Customer Information</Text>
       
       {/* Profile Image Upload */}
       <View style={styles.profileSection}>
@@ -524,74 +436,16 @@ const AddCustomer: React.FC = () => {
         Address <Text style={styles.required}>*</Text>
       </Text>
 
-      <View style={[styles.formRow, isTablet && styles.formRowTablet]}>
-        <View style={[styles.formGroup, isTablet && styles.formGroupTablet]}>
-          <Text style={[styles.label, isTablet && { fontSize: 16 }]}>Region</Text>
-          <TextInput
-            style={[styles.input, isTablet && styles.inputTablet]}
-            value={formData.region}
-            onChangeText={(text) => updateField('region', text)}
-            placeholder="Enter region"
-            placeholderTextColor="#999"
-          />
-        </View>
-
-        <View style={[styles.formGroup, isTablet && styles.formGroupTablet]}>
-          <Text style={[styles.label, isTablet && { fontSize: 16 }]}>Province</Text>
-          <TextInput
-            style={[styles.input, isTablet && styles.inputTablet]}
-            value={formData.province}
-            onChangeText={(text) => updateField('province', text)}
-            placeholder="Enter province"
-            placeholderTextColor="#999"
-          />
-        </View>
-      </View>
-
-      <View style={[styles.formRow, isTablet && styles.formRowTablet]}>
-        <View style={[styles.formGroup, isTablet && styles.formGroupTablet]}>
-          <Text style={[styles.label, isTablet && { fontSize: 16 }]}>City/Municipality</Text>
-          <TextInput
-            style={[styles.input, isTablet && styles.inputTablet]}
-            value={formData.cityMunicipality}
-            onChangeText={(text) => updateField('cityMunicipality', text)}
-            placeholder="Enter city/municipality"
-            placeholderTextColor="#999"
-          />
-        </View>
-
-        <View style={[styles.formGroup, isTablet && styles.formGroupTablet]}>
-          <Text style={[styles.label, isTablet && { fontSize: 16 }]}>Barangay</Text>
-          <TextInput
-            style={[styles.input, isTablet && styles.inputTablet]}
-            value={formData.barangay}
-            onChangeText={(text) => updateField('barangay', text)}
-            placeholder="Enter barangay"
-            placeholderTextColor="#999"
-          />
-        </View>
-      </View>
-
       <View style={styles.formGroup}>
-        <Text style={[styles.label, isTablet && { fontSize: 16 }]}>House No/Street/Bldg/Unit#</Text>
+        <Text style={[styles.label, isTablet && { fontSize: 16 }]}>Address</Text>
         <TextInput
           style={[styles.input, isTablet && styles.inputTablet]}
-          value={formData.houseNoStreet}
-          onChangeText={(text) => updateField('houseNoStreet', text)}
-          placeholder="Enter house no/street/building/unit"
+          value={formData.address}
+          onChangeText={(text) => updateField('address', text)}
+          placeholder="Enter your complete address"
           placeholderTextColor="#999"
-        />
-      </View>
-
-      <View style={styles.formGroup}>
-        <Text style={[styles.label, isTablet && { fontSize: 16 }]}>Zip Code</Text>
-        <TextInput
-          style={[styles.input, isTablet && styles.inputTablet]}
-          value={formData.zipCode}
-          onChangeText={(text) => updateField('zipCode', text)}
-          placeholder="Enter zip code"
-          placeholderTextColor="#999"
-          keyboardType="numeric"
+          multiline
+          numberOfLines={3}
         />
       </View>
 
@@ -628,7 +482,7 @@ const AddCustomer: React.FC = () => {
   // Render Step 2: RFID Scan
   const renderStep2 = () => (
     <View style={styles.stepContent}>
-      <Text style={[styles.stepTitle, isTablet && { fontSize: 22 }]}>RFID Registration</Text>
+      <Text style={[styles.stepTitle, isTablet && { fontSize: 22 }]}>RFID Scan</Text>
 
       {/* RFID ID Number Input */}
       <View style={styles.formGroup}>
@@ -648,35 +502,20 @@ const AddCustomer: React.FC = () => {
           />
         </View>
         <Text style={[styles.helperText, isTablet && { fontSize: 14 }]}>
-          Use NFC reading with your phone or connect a hardware scanner
+          Connect a hardware scanner to read RFID tags
         </Text>
       </View>
 
-      {/* Two Buttons Side by Side */}
-      <View style={styles.rfidButtonRow}>
-        {/* NFC Reading Button */}
-        <TouchableOpacity 
-          style={[styles.rfidButton, styles.nfcButton, isTablet && styles.rfidButtonTablet]}
-          onPress={handleNfcReading}
-          disabled={isNfcReading}
-        >
-          <Icon name="phone-portrait-outline" size={isTablet ? 26 : 22} color="#FFF" />
-          <Text style={[styles.rfidButtonText, isTablet && { fontSize: 16 }]}>
-            {isNfcReading ? 'Reading...' : 'NFC Reading\n(Phone)'}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Hardware Scanner Button */}
-        <TouchableOpacity 
-          style={[styles.rfidButton, styles.hardwareButton, isTablet && styles.rfidButtonTablet]}
-          onPress={handleHardwareScan}
-        >
-          <Icon name="hardware-chip-outline" size={isTablet ? 26 : 22} color="#FFF" />
-          <Text style={[styles.rfidButtonText, isTablet && { fontSize: 16 }]}>
-            Use Hardware
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {/* Hardware Scanner Button */}
+      <TouchableOpacity 
+        style={[styles.rfidButton, styles.hardwareButton, isTablet && styles.rfidButtonTablet]}
+        onPress={handleHardwareScan}
+      >
+        <Icon name="hardware-chip-outline" size={isTablet ? 26 : 22} color="#FFF" />
+        <Text style={[styles.rfidButtonText, isTablet && { fontSize: 16 }]}>
+          Use Hardware Scanner
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -708,7 +547,7 @@ const AddCustomer: React.FC = () => {
   // Render Step 3: Membership Details
   const renderStep4 = () => (
     <View style={styles.stepContent}>
-      <Text style={[styles.stepTitle, isTablet && { fontSize: 22 }]}>Membership Details</Text>
+      <Text style={[styles.stepTitle, isTablet && { fontSize: 22 }]}>Subscription</Text>
 
       {/* Membership Type Dropdown */}
       <View style={styles.formGroup}>
@@ -748,6 +587,54 @@ const AddCustomer: React.FC = () => {
             mode="date"
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
             onChange={handleRegistrationDateChange}
+          />
+        )}
+      </View>
+
+      {/* Start Membership Date */}
+      <View style={styles.formGroup}>
+        <Text style={[styles.label, isTablet && { fontSize: 16 }]}>Start Membership Date</Text>
+        <TouchableOpacity
+          style={[styles.dateButton, isTablet && styles.inputTablet]}
+          onPress={() => setShowStartMembershipPicker(true)}
+        >
+          <Text style={[styles.dateButtonText, isTablet && { fontSize: 16 }]}>
+            {formData.startMembershipDate 
+              ? formData.startMembershipDate.toLocaleDateString()
+              : 'Select start date'}
+          </Text>
+          <Icon name="calendar-outline" size={20} color="#FF6B35" />
+        </TouchableOpacity>
+        {showStartMembershipPicker && (
+          <DateTimePicker
+            value={formData.startMembershipDate || new Date()}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={handleStartMembershipDateChange}
+          />
+        )}
+      </View>
+
+      {/* Membership Expiration Date */}
+      <View style={styles.formGroup}>
+        <Text style={[styles.label, isTablet && { fontSize: 16 }]}>Expiration Date</Text>
+        <TouchableOpacity
+          style={[styles.dateButton, isTablet && styles.inputTablet]}
+          onPress={() => setShowExpirationPicker(true)}
+        >
+          <Text style={[styles.dateButtonText, isTablet && { fontSize: 16 }]}>
+            {formData.membershipExpirationDate 
+              ? formData.membershipExpirationDate.toLocaleDateString()
+              : 'Select expiration date'}
+          </Text>
+          <Icon name="calendar-outline" size={20} color="#FF6B35" />
+        </TouchableOpacity>
+        {showExpirationPicker && (
+          <DateTimePicker
+            value={formData.membershipExpirationDate || new Date()}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            onChange={handleExpirationDateChange}
           />
         )}
       </View>
@@ -854,8 +741,7 @@ const AddCustomer: React.FC = () => {
         <View style={styles.confirmationSection}>
           <Text style={[styles.confirmationSectionTitle, isTablet && { fontSize: 20 }]}>Address</Text>
           <Text style={[styles.confirmationValue, isTablet && { fontSize: 16 }]}>
-            {formData.houseNoStreet}, {formData.barangay}, {formData.cityMunicipality},{' '}
-            {formData.province}, {formData.region} {formData.zipCode}
+            {formData.address}
           </Text>
         </View>
 
@@ -973,8 +859,8 @@ const AddCustomer: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         {currentStep === 0 && renderStep1()}
-        {currentStep === 1 && renderStep2()}
-        {currentStep === 2 && renderStep3()}
+        {currentStep === 1 && renderStep3()}
+        {currentStep === 2 && renderStep2()}
         {currentStep === 3 && renderStep4()}
         {currentStep === 4 && renderStep5()}
       </ScrollView>

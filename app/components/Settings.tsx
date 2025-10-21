@@ -1,10 +1,12 @@
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import Products from './Products';
 
 export default function Settings() {
   const router = useRouter();
+  const [isProductsModalVisible, setIsProductsModalVisible] = useState(false);
 
   const SettingItem = ({ 
     icon, 
@@ -49,65 +51,91 @@ export default function Settings() {
   );
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.profileSection}>
-        <View style={styles.profileAvatar}>
-          <Icon name="person" size={50} color="#fff" />
+    <>
+      <ScrollView style={styles.container}>
+        <View style={styles.profileSection}>
+          <View style={styles.profileAvatar}>
+            <Icon name="person" size={50} color="#fff" />
+          </View>
+          <Text style={styles.profileName}>Gym Owner</Text>
+          <Text style={styles.profileEmail}>owner@gym.com</Text>
+          <TouchableOpacity style={styles.editProfileButton}>
+            <Text style={styles.editProfileText}>Edit Profile</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.profileName}>Gym Owner</Text>
-        <Text style={styles.profileEmail}>owner@gym.com</Text>
-        <TouchableOpacity style={styles.editProfileButton}>
-          <Text style={styles.editProfileText}>Edit Profile</Text>
-        </TouchableOpacity>
-      </View>
 
-      <SettingSection title="Gym Settings">
-        <SettingItem
-          icon="pricetag"
-          title="Membership Plan"
-          subtitle="Manage subscription plans and pricing"
-          onPress={() => router.push('/Membership')}
-        />
-        <SettingItem
-          icon="mail"
-          title="Email Setting"
-          subtitle="Configure email notifications and alerts"
-          onPress={() => router.push('/EmailConfig')}
-        />
-      </SettingSection>
+        <SettingSection title="Gym Settings">
+          <SettingItem
+            icon="cube"
+            title="Products"
+            subtitle="Manage inventory and product details"
+            onPress={() => setIsProductsModalVisible(true)}
+          />
+          <SettingItem
+            icon="pricetag"
+            title="Membership Plan"
+            subtitle="Manage subscription plans and pricing"
+            onPress={() => router.push('/Membership')}
+          />
+          <SettingItem
+            icon="mail"
+            title="Email Setting"
+            subtitle="Configure email notifications and alerts"
+            onPress={() => router.push('/EmailConfig')}
+          />
+        </SettingSection>
 
-      <SettingSection title="User Management">
-        <SettingItem
-          icon="people"
-          title="User Management"
-          subtitle="Manage staff accounts and permissions"
-          onPress={() => router.push('/UserManagement')}
-        />
-      </SettingSection>
+        <SettingSection title="User Management">
+          <SettingItem
+            icon="people"
+            title="User Management"
+            subtitle="Manage staff accounts and permissions"
+            onPress={() => router.push('/UserManagement')}
+          />
+        </SettingSection>
 
-      <SettingSection title="About">
-        <SettingItem
-          icon="information-circle"
-          title="About App"
-          subtitle="Developer and Version Info"
-          onPress={() => {}}
-        />
-      </SettingSection>
+        <SettingSection title="About">
+          <SettingItem
+            icon="information-circle"
+            title="About App"
+            subtitle="Developer and Version Info"
+            onPress={() => {}}
+          />
+        </SettingSection>
 
-      <View style={styles.logoutSection}>
-        <TouchableOpacity style={styles.logoutButton}>
-          <Icon name="log-out" size={24} color="#fff" />
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.logoutSection}>
+          <TouchableOpacity style={styles.logoutButton}>
+            <Icon name="log-out" size={24} color="#fff" />
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Gym Management System</Text>
-        <Text style={styles.footerText}>Developed by Kent Cortieguerra</Text>
-        <Text style={styles.footerText}>Version 1.0.0</Text>
-        <Text style={styles.footerText}>© 2024 All Rights Reserved</Text>
-      </View>
-    </ScrollView>
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Gym Management System</Text>
+          <Text style={styles.footerText}>Developed by Kent Cortieguerra</Text>
+          <Text style={styles.footerText}>Version 1.0.0</Text>
+          <Text style={styles.footerText}>© 2024 All Rights Reserved</Text>
+        </View>
+      </ScrollView>
+
+      {/* Products Modal */}
+      <Modal
+        visible={isProductsModalVisible}
+        animationType="slide"
+        onRequestClose={() => setIsProductsModalVisible(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setIsProductsModalVisible(false)}>
+              <Icon name="close" size={28} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Products Management</Text>
+            <View style={{ width: 28 }} />
+          </View>
+          <Products />
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -229,5 +257,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     marginBottom: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
   },
 });

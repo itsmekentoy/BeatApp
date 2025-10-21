@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
+    Alert,
     Image,
     ScrollView,
     StyleSheet,
@@ -102,32 +103,13 @@ const ViewCustomer: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header with Back Button and Action Icons */}
+      {/* Header with Back Button */}
       <View style={[styles.header, isTablet && { paddingHorizontal: 32 }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} color="#FF6B35" />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, isTablet && { fontSize: 22 }]}>Customer Details</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity 
-            style={[styles.actionButton, isTablet && styles.actionButtonTablet]}
-            onPress={() => router.push({
-              pathname: '/CreateTransaction',
-              params: { customerId: customer.id, customerName: customer.name }
-            })}
-          >
-            <Icon name="add-circle" size={isTablet ? 28 : 24} color="#27ae60" />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.actionButton, isTablet && styles.actionButtonTablet]}
-            onPress={() => router.push({
-              pathname: '/EditCustomer',
-              params: { customerId: customer.id }
-            })}
-          >
-            <Icon name="create-outline" size={isTablet ? 28 : 24} color="#FF6B35" />
-          </TouchableOpacity>
-        </View>
+        <View style={styles.headerActions} />
       </View>
 
       <ScrollView 
@@ -156,20 +138,86 @@ const ViewCustomer: React.FC = () => {
           </View>
 
           <View style={[styles.membershipInfo, isTablet && styles.membershipInfoTablet]}>
-            <View style={styles.membershipItem}>
-              <Icon name="card-outline" size={isTablet ? 24 : 20} color="#FF6B35" />
-              <Text style={[styles.membershipLabel, isTablet && { fontSize: 14 }]}>Membership</Text>
-              <Text style={[styles.membershipValue, isTablet && { fontSize: 16 }]}>
-                {customer.membershipType}
-              </Text>
+            <View style={styles.membershipContent}>
+              <View style={styles.membershipItem}>
+                <Icon name="card-outline" size={isTablet ? 24 : 20} color="#FF6B35" />
+                <Text style={[styles.membershipLabel, isTablet && { fontSize: 14 }]}>Membership</Text>
+                <Text style={[styles.membershipValue, isTablet && { fontSize: 16 }]}>
+                  {customer.membershipType}
+                </Text>
+              </View>
+              <View style={styles.membershipDivider} />
+              <View style={styles.membershipItem}>
+                <Icon name="calendar-outline" size={isTablet ? 24 : 20} color="#FF6B35" />
+                <Text style={[styles.membershipLabel, isTablet && { fontSize: 14 }]}>Started</Text>
+                <Text style={[styles.membershipValue, isTablet && { fontSize: 16 }]}>
+                  {new Date(customer.dateStarted).toLocaleDateString()}
+                </Text>
+              </View>
+              <View style={styles.membershipDivider} />
+              <View style={styles.membershipItem}>
+                <Icon name="calendar-outline" size={isTablet ? 24 : 20} color="#FF6B35" />
+                <Text style={[styles.membershipLabel, isTablet && { fontSize: 14 }]}>Terminate Date</Text>
+                <Text style={[styles.membershipValue, isTablet && { fontSize: 16 }]}>
+                  -
+                </Text>
+              </View>
+              <View style={styles.membershipDivider} />
+              <View style={styles.membershipItem}>
+                <Icon name="lock-closed-outline" size={isTablet ? 24 : 20} color="#FF6B35" />
+                <Text style={[styles.membershipLabel, isTablet && { fontSize: 14 }]}>Frozen</Text>
+                <Text style={[styles.membershipValue, isTablet && { fontSize: 16 }]}>
+                  No
+                </Text>
+              </View>
             </View>
-            <View style={styles.membershipDivider} />
-            <View style={styles.membershipItem}>
-              <Icon name="calendar-outline" size={isTablet ? 24 : 20} color="#FF6B35" />
-              <Text style={[styles.membershipLabel, isTablet && { fontSize: 14 }]}>Started</Text>
-              <Text style={[styles.membershipValue, isTablet && { fontSize: 16 }]}>
-                {new Date(customer.dateStarted).toLocaleDateString()}
-              </Text>
+            <View style={styles.membershipButtonDivider} />
+            <View style={styles.membershipButtonRow}>
+              <TouchableOpacity 
+                style={[styles.membershipActionButton, styles.transactionButton, isTablet && styles.membershipActionButtonTablet]}
+                onPress={() => router.push({
+                  pathname: '/CreateTransaction',
+                  params: { customerId: customer.id, customerName: customer.name }
+                })}
+              >
+                <Icon name="add-circle-outline" size={isTablet ? 20 : 18} color="#fff" />
+                <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}>
+                  Transaction
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.membershipActionButton, styles.editButton, isTablet && styles.membershipActionButtonTablet]}
+                onPress={() => router.push({
+                  pathname: '/EditCustomer',
+                  params: { customerId: customer.id }
+                })}
+              >
+                <Icon name="create-outline" size={isTablet ? 20 : 18} color="#fff" />
+                <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}>
+                  Edit
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.membershipActionButton, styles.freezeButton, isTablet && styles.membershipActionButtonTablet]}
+                onPress={() => Alert.alert('Freeze Account', 'Are you sure you want to freeze this account?')}
+              >
+                <Icon name="pause-outline" size={isTablet ? 20 : 18} color="#fff" />
+                <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}>
+                  Freeze
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.membershipActionButton, styles.terminateButton, isTablet && styles.membershipActionButtonTablet]}
+                onPress={() => Alert.alert('Terminate Membership', 'Are you sure you want to terminate this membership?')}
+              >
+                <Icon name="close-circle-outline" size={isTablet ? 20 : 18} color="#fff" />
+                <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}>
+                  Terminate
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -386,10 +434,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   membershipInfo: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
+    overflow: 'hidden',
     width: '100%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -400,6 +448,10 @@ const styles = StyleSheet.create({
   membershipInfoTablet: {
     maxWidth: 500,
   },
+  membershipContent: {
+    flexDirection: 'row',
+    padding: 16,
+  },
   membershipItem: {
     flex: 1,
     alignItems: 'center',
@@ -407,7 +459,11 @@ const styles = StyleSheet.create({
   membershipDivider: {
     width: 1,
     backgroundColor: '#eee',
-    marginHorizontal: 16,
+    marginHorizontal: 8,
+  },
+  membershipButtonDivider: {
+    height: 1,
+    backgroundColor: '#eee',
   },
   membershipLabel: {
     fontSize: 12,
@@ -419,6 +475,40 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
     marginTop: 4,
+  },
+  membershipButtonRow: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 8,
+  },
+  membershipActionButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  membershipActionButtonTablet: {
+    paddingVertical: 12,
+  },
+  membershipActionButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 11,
+  },
+  transactionButton: {
+    backgroundColor: '#27ae60',
+  },
+  editButton: {
+    backgroundColor: '#FF6B35',
+  },
+  freezeButton: {
+    backgroundColor: '#f39c12',
+  },
+  terminateButton: {
+    backgroundColor: '#e74c3c',
   },
   // Accordion
   accordionContainer: {

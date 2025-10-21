@@ -1,22 +1,36 @@
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import moment from 'moment';
+import React, { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-
-const customers = [
-  { id: '1', name: 'John Doe', membership: 'Active', expiry: '2025-12-01' },
-  { id: '2', name: 'Jane Smith', membership: 'Inactive', expiry: '2025-10-20' },
-  { id: '3', name: 'Mike Lee', membership: 'Active', expiry: '2026-01-15' },
-  { id: '4', name: 'Anna Kim', membership: 'Expiring', expiry: '2025-10-15' },
-  { id: '5', name: 'Chris Paul', membership: 'Active', expiry: '2025-11-10' },
-];
+import apiConnector from '../utils/apiConnector';
 
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'Active': return '#27ae60';
     case 'Inactive': return '#e74c3c';
     case 'Expiring': return '#f39c12';
+    case 'Freeze': return '#3498db';
+    case 'Terminated': return '#7f8c8d';
     default: return '#888';
+  }
+};
+
+const determineStatus = (membershipEnd: string, status: number) => {
+  const today = moment();
+  const endDate = moment(membershipEnd);
+  const daysRemaining = endDate.diff(today, 'days');
+
+  if (daysRemaining <= 7 && daysRemaining >= 0) {
+    return 'Expiring';
+  }
+
+  switch (status) {
+    case 0: return 'Active';
+    case 1: return 'Inactive';
+    case 2: return 'Freeze';
+    case 3: return 'Terminated';
+    default: return 'Unknown';
   }
 };
 
@@ -25,31 +39,50 @@ const Customer: React.FC = () => {
   const isTablet = width >= 600;
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [customers, setCustomers] = useState<any[]>([]);
 
-  const filteredCustomers = customers.filter(customer =>
-    customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    customer.membership.toLowerCase().includes(searchQuery.toLowerCase())
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      try {
+        const response = await apiConnector.request('Beat/customers');
+        const data = await response.json();
+        setCustomers(data);
+      } catch (error) {
+        console.error('Error fetching customers:', error);
+      }
+    };
+
+    fetchCustomers();
+  }, []);
+
+  const filteredCustomers = customers.filter((customer: any) =>
+    customer.firstname.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    customer.lastname.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const renderItem = ({ item }: any) => (
-    <TouchableOpacity 
-      style={[styles.card, isTablet && styles.cardTablet]}
-      onPress={() => router.push({
-        pathname: '/ViewCustomer',
-        params: { id: item.id, name: item.name }
-      })}
-      activeOpacity={0.7}
-    >
-      <View style={styles.row}>
-        <Text style={styles.name}>{item.name}</Text>
-        <Text style={[styles.status, { color: getStatusColor(item.membership) }]}>{item.membership}</Text>
-      </View>
-      <View style={styles.row}>
-        <Text style={styles.label}>Expiry:</Text>
-        <Text style={styles.expiry}>{item.expiry}</Text>
-      </View>
-    </TouchableOpacity>
-  );
+  const renderItem = ({ item }: any) => {
+    const status = determineStatus(item.membership_end, item.status);
+
+    return (
+      <TouchableOpacity 
+        style={[styles.card, isTablet && styles.cardTablet]}
+        onPress={() => router.push({
+          pathname: '/ViewCustomer',
+          params: { id: item.id, name: `${item.firstname} ${item.lastname}` }
+        })}
+        activeOpacity={0.7}
+      >
+        <View style={styles.row}>
+          <Text style={styles.name}>{`${item.firstname} ${item.lastname}`}</Text>
+          <Text style={[styles.status, { color: getStatusColor(status) }]}>{status}</Text>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>Expiry:</Text>
+          <Text style={styles.expiry}>{item.membership_end}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -82,7 +115,7 @@ const Customer: React.FC = () => {
       <FlatList
         data={filteredCustomers}
         renderItem={renderItem}
-        keyExtractor={item => item.id}
+        keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={{ paddingBottom: 24 }}
         numColumns={isTablet ? 2 : 1}
         columnWrapperStyle={isTablet ? { gap: 16 } : undefined}

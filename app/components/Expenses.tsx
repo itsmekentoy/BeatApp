@@ -42,6 +42,7 @@ const Expenses = () => {
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Filter expenses based on search and date range
   const getFilteredExpenses = () => {
@@ -108,22 +109,22 @@ const Expenses = () => {
   // Render table header
   const renderTableHeader = () => (
     <View style={[styles.tableRow, styles.tableHeader]}>
-      <Text style={[styles.tableCell, styles.headerText, styles.dateColumn]}>Date</Text>
-      <Text style={[styles.tableCell, styles.headerText, styles.categoryColumn]}>Category</Text>
-      <Text style={[styles.tableCell, styles.headerText, styles.descriptionColumn]}>Description</Text>
-      <Text style={[styles.tableCell, styles.headerText, styles.amountColumn]}>Amount</Text>
+      <Text style={[styles.tableCell, styles.headerText, isTablet && styles.headerTextTablet, isTablet ? styles.dateColumnTablet : styles.dateColumn]}>Date</Text>
+      <Text style={[styles.tableCell, styles.headerText, isTablet && styles.headerTextTablet, isTablet ? styles.categoryColumnTablet : styles.categoryColumn]}>Category</Text>
+      <Text style={[styles.tableCell, styles.headerText, isTablet && styles.headerTextTablet, isTablet ? styles.descriptionColumnTablet : styles.descriptionColumn]}>Description</Text>
+      <Text style={[styles.tableCell, styles.headerText, isTablet && styles.headerTextTablet, isTablet ? styles.amountColumnTablet : styles.amountColumn]}>Amount</Text>
     </View>
   );
 
   // Render expense row
   const renderExpenseRow = ({ item }: { item: Expense }) => (
     <View style={styles.tableRow}>
-      <Text style={[styles.tableCell, styles.dateColumn]}>
+      <Text style={[styles.tableCell, isTablet && { fontSize: 15 }, isTablet ? styles.dateColumnTablet : styles.dateColumn]}>
         {item.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
       </Text>
-      <Text style={[styles.tableCell, styles.categoryColumn]}>{item.category}</Text>
-      <Text style={[styles.tableCell, styles.descriptionColumn]}>{item.description}</Text>
-      <Text style={[styles.tableCell, styles.amountColumn, styles.amountText]}>
+      <Text style={[styles.tableCell, isTablet && { fontSize: 15 }, isTablet ? styles.categoryColumnTablet : styles.categoryColumn]}>{item.category}</Text>
+      <Text style={[styles.tableCell, isTablet && { fontSize: 15 }, isTablet ? styles.descriptionColumnTablet : styles.descriptionColumn]}>{item.description}</Text>
+      <Text style={[styles.tableCell, isTablet && { fontSize: 15 }, isTablet ? styles.amountColumnTablet : styles.amountColumn, styles.amountText]}>
         ₱{item.amount.toLocaleString()}
       </Text>
     </View>
@@ -222,41 +223,19 @@ const Expenses = () => {
         />
       )}
 
-      {/* Total Boxes */}
-      <View style={[styles.totalsContainer, isTablet && styles.totalsContainerTablet]}>
-        <View style={[styles.totalBox, styles.monthlyBox]}>
-          <Icon name="calendar-outline" size={isTablet ? 32 : 28} color="#4CAF50" />
-          <Text style={[styles.totalLabel, isTablet && { fontSize: 16 }]}>Monthly Total</Text>
-          <Text style={[styles.totalAmount, isTablet && { fontSize: 26 }]}>
-            ₱{calculateMonthlyTotal().toLocaleString()}
-          </Text>
-          <Text style={[styles.totalPeriod, isTablet && { fontSize: 13 }]}>
-            {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-          </Text>
-        </View>
-
-        <View style={[styles.totalBox, styles.yearlyBox]}>
-          <Icon name="calendar" size={isTablet ? 32 : 28} color="#FF6B35" />
-          <Text style={[styles.totalLabel, isTablet && { fontSize: 16 }]}>Yearly Total</Text>
-          <Text style={[styles.totalAmount, isTablet && { fontSize: 26 }]}>
-            ₱{calculateYearlyTotal().toLocaleString()}
-          </Text>
-          <Text style={[styles.totalPeriod, isTablet && { fontSize: 13 }]}>
-            {new Date().getFullYear()}
-          </Text>
-        </View>
-      </View>
+      
 
       {/* Expenses Table */}
       <View style={styles.tableContainer}>
         <Text style={[styles.tableTitle, isTablet && { fontSize: 20 }]}>Expense Records</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-          <View style={styles.tableWrapper}>
+        {isTablet ? (
+          <View style={[styles.tableWrapper, styles.tableWrapperTablet]}>
             {renderTableHeader()}
             <FlatList
               data={filteredExpenses}
               keyExtractor={(item) => item.id}
               renderItem={renderExpenseRow}
+              scrollEnabled={false}
               ListEmptyComponent={
                 <View style={styles.emptyContainer}>
                   <Icon name="receipt-outline" size={60} color="#ccc" />
@@ -267,7 +246,26 @@ const Expenses = () => {
               }
             />
           </View>
-        </ScrollView>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+            <View style={styles.tableWrapper}>
+              {renderTableHeader()}
+              <FlatList
+                data={filteredExpenses}
+                keyExtractor={(item) => item.id}
+                renderItem={renderExpenseRow}
+                ListEmptyComponent={
+                  <View style={styles.emptyContainer}>
+                    <Icon name="receipt-outline" size={60} color="#ccc" />
+                    <Text style={styles.emptyText}>
+                      {searchQuery || startDate || endDate ? 'No expenses found' : 'No expenses recorded yet'}
+                    </Text>
+                  </View>
+                }
+              />
+            </View>
+          </ScrollView>
+        )}
       </View>
 
       {/* Add Expense Modal */}
@@ -325,6 +323,32 @@ const Expenses = () => {
                     keyboardType="numeric"
                   />
                 </View>
+              </View>
+
+              {/* Date of Expense */}
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, isTablet && { fontSize: 16 }]}>Date of Expense *</Text>
+                <TouchableOpacity
+                  style={[styles.input, styles.dateInput, isTablet && styles.inputTablet]}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text style={{ color: newExpense.date ? '#333' : '#999' }}>
+                    {newExpense.date || 'Select a date'}
+                  </Text>
+                </TouchableOpacity>
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={(event, selectedDate) => {
+                      setShowDatePicker(false);
+                      if (selectedDate) {
+                        setNewExpense({ ...newExpense, date: selectedDate.toISOString().split('T')[0] });
+                      }
+                    }}
+                  />
+                )}
               </View>
             </ScrollView>
 
@@ -501,6 +525,10 @@ const styles = StyleSheet.create({
   tableWrapper: {
     minWidth: 600,
   },
+  tableWrapperTablet: {
+    width: '100%',
+    flex: 1,
+  },
   tableTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -521,13 +549,16 @@ const styles = StyleSheet.create({
   tableCell: {
     fontSize: 13,
     color: '#333',
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
   },
   headerText: {
     fontWeight: 'bold',
     fontSize: 12,
     color: '#666',
     textTransform: 'uppercase',
+  },
+  headerTextTablet: {
+    fontSize: 14,
   },
   dateColumn: {
     width: 120,
@@ -540,6 +571,20 @@ const styles = StyleSheet.create({
   },
   amountColumn: {
     width: 120,
+    textAlign: 'right',
+  },
+  /* Tablet responsive columns - use flex instead of fixed width */
+  dateColumnTablet: {
+    flex: 1,
+  },
+  categoryColumnTablet: {
+    flex: 1.3,
+  },
+  descriptionColumnTablet: {
+    flex: 2.5,
+  },
+  amountColumnTablet: {
+    flex: 1,
     textAlign: 'right',
   },
   amountText: {
@@ -638,6 +683,10 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     fontSize: 14,
     color: '#333',
+  },
+  dateInput: {
+    paddingVertical: 10,
+    justifyContent: 'center',
   },
   modalFooter: {
     flexDirection: 'row',
