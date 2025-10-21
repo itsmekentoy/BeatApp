@@ -15,6 +15,7 @@ interface Permission {
   expenseUpdate: boolean;
   expenseDelete: boolean;
   userManagement: boolean;
+  emailConfiguration: boolean;
 }
 
 interface User {
@@ -49,6 +50,7 @@ const UserManagement = () => {
         expenseUpdate: true,
         expenseDelete: true,
         userManagement: true,
+        emailConfiguration: true,
       },
     },
     {
@@ -68,6 +70,7 @@ const UserManagement = () => {
         expenseUpdate: false,
         expenseDelete: false,
         userManagement: false,
+        emailConfiguration: false,
       },
     },
   ]);
@@ -94,6 +97,7 @@ const UserManagement = () => {
     expenseUpdate: false,
     expenseDelete: false,
     userManagement: false,
+    emailConfiguration: false,
   });
 
   const fetchUsers = React.useCallback(async () => {
@@ -101,16 +105,50 @@ const UserManagement = () => {
       const response = await apiConnector.request('Beat/users');
       if (response.ok) {
         const data = await response.json();
-        const formattedUsers = data.map((user: any) => ({
-          id: user.id.toString(),
-          name: user.name,
-          role: user.role,
-          email: user.email,
-          permissions: user.permissions.reduce((acc: any, perm: any) => {
-            acc[perm.permission] = perm.is_granted === 1; // Default is false, true if granted
-            return acc;
-          }, {}),
-        }));
+        const permissionMapping: { [key: string]: keyof Permission } = {
+          "1": "viewFinancialOverview",
+          "2": "membershipPlan",
+          "3": "customerAdd",
+          "4": "customerUpdate",
+          "5": "customerDelete",
+          "6": "addTransaction",
+          "7": "expenseAdd",
+          "8": "expenseUpdate",
+          "9": "expenseDelete",
+          "10": "userManagement",
+          "11": "emailConfiguration",
+        };
+        const formattedUsers = data.map((user: any) => {
+          // Build permissions object with all keys defaulting to false
+          const permissions: Permission = {
+            viewFinancialOverview: false,
+            membershipPlan: false,
+            customerAdd: false,
+            customerUpdate: false,
+            customerDelete: false,
+            addTransaction: false,
+            expenseAdd: false,
+            expenseUpdate: false,
+            expenseDelete: false,
+            userManagement: false,
+            emailConfiguration: false,
+          };
+          if (Array.isArray(user.permissions)) {
+            user.permissions.forEach((perm: any) => {
+              const key = permissionMapping[perm.permission];
+              if (key) {
+                permissions[key] = perm.is_granted === 1;
+              }
+            });
+          }
+          return {
+            id: user.id.toString(),
+            name: user.name,
+            role: user.role,
+            email: user.email,
+            permissions,
+          };
+        });
         setUsers(formattedUsers);
       } else {
         Alert.alert('Error', 'Failed to fetch users');
@@ -235,22 +273,26 @@ const UserManagement = () => {
       password: user.password,
     });
 
-    let permissionsArray = user.permissions;
-
-    // Check if permissions are in object format and convert to array
-    if (!Array.isArray(permissionsArray) && typeof permissionsArray === 'object') {
-      permissionsArray = Object.entries(permissionsArray).map(([key, value]) => ({
-        permission: key,
-        is_granted: value ? 1 : 0,
-      }));
+    // If permissions is already an object, use it directly
+    if (typeof user.permissions === 'object' && !Array.isArray(user.permissions)) {
+      setPermissions({
+        viewFinancialOverview: !!user.permissions.viewFinancialOverview,
+        membershipPlan: !!user.permissions.membershipPlan,
+        customerAdd: !!user.permissions.customerAdd,
+        customerUpdate: !!user.permissions.customerUpdate,
+        customerDelete: !!user.permissions.customerDelete,
+        addTransaction: !!user.permissions.addTransaction,
+        expenseAdd: !!user.permissions.expenseAdd,
+        expenseUpdate: !!user.permissions.expenseUpdate,
+        expenseDelete: !!user.permissions.expenseDelete,
+        userManagement: !!user.permissions.userManagement,
+        emailConfiguration: !!user.permissions.emailConfiguration,
+      });
+      setShowEditModal(true);
+      return;
     }
 
-    if (!Array.isArray(permissionsArray)) {
-      console.error('Invalid permissions format:', user.permissions);
-      Alert.alert('Error', 'User permissions data is invalid. Defaulting to no permissions.');
-      permissionsArray = [];
-    }
-
+    // If permissions is an array, map it to Permission object
     const permissionMapping: { [key: string]: keyof Permission } = {
       "1": "viewFinancialOverview",
       "2": "membershipPlan",
@@ -262,15 +304,10 @@ const UserManagement = () => {
       "8": "expenseUpdate",
       "9": "expenseDelete",
       "10": "userManagement",
+      "11": "emailConfiguration",
     };
 
-    const mappedPermissions = permissionsArray.reduce((acc: Permission, perm: any) => {
-      const key = permissionMapping[perm.permission];
-      if (key) {
-        acc[key] = perm.is_granted === 1;
-      }
-      return acc;
-    }, {
+    let mapped: Permission = {
       viewFinancialOverview: false,
       membershipPlan: false,
       customerAdd: false,
@@ -281,10 +318,23 @@ const UserManagement = () => {
       expenseUpdate: false,
       expenseDelete: false,
       userManagement: false,
-    });
+      emailConfiguration: false,
+    };
 
-    console.log('Mapped permissions:', mappedPermissions);
-    setPermissions(mappedPermissions);
+    if (Array.isArray(user.permissions)) {
+      user.permissions.forEach((perm: any) => {
+        const key = permissionMapping[perm.permission];
+        if (key) {
+          mapped[key] = perm.is_granted === 1;
+        }
+      });
+      setPermissions(mapped);
+      setShowEditModal(true);
+      return;
+    }
+
+    // Fallback: default to all false
+    setPermissions(mapped);
     setShowEditModal(true);
   };
 
@@ -587,6 +637,11 @@ const UserManagement = () => {
                     checked={permissions.userManagement}
                     onToggle={() => togglePermission('userManagement')}
                   />
+                  <PermissionCheckbox
+                    label="11. Email Configuration"
+                    checked={permissions.emailConfiguration}
+                    onToggle={() => togglePermission('emailConfiguration')}
+                  />
                 </View>
               </View>
 
@@ -703,7 +758,7 @@ const UserManagement = () => {
                   onToggle={() => togglePermission('viewFinancialOverview')}
                 />
                 <PermissionCheckbox
-                  label="2.Membership Plan"
+                  label="2. Membership Plan"
                   checked={permissions.membershipPlan}
                   onToggle={() => togglePermission('membershipPlan')}
                 />
@@ -746,6 +801,11 @@ const UserManagement = () => {
                   label="10. User Management"
                   checked={permissions.userManagement}
                   onToggle={() => togglePermission('userManagement')}
+                />
+                <PermissionCheckbox
+                  label="11. Email Configuration"
+                  checked={permissions.emailConfiguration}
+                  onToggle={() => togglePermission('emailConfiguration')}
                 />
               </View>
             </View>

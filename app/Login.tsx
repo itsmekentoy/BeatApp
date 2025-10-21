@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { useUser } from './context/UserContext';
 import apiConnector from './utils/apiConnector';
 
 export default function Login() {
@@ -22,6 +23,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const { setLoginData } = useUser();
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -64,14 +66,15 @@ export default function Login() {
       const result = await response.json();
 
       if (result.success) {
+        setLoginData(result); // Store login response in context
+        // Optionally, persist to file as before
         const file = new File(Paths.cache, 'userSession.txt');
         if (!file.exists) {
           file.create();
         }
-        file.write(JSON.stringify(result)); // Save the successful login response
+        file.write(JSON.stringify(result));
         console.log('User session saved:', result);
-
-        router.replace('/'); // Redirect to the main page
+        router.replace('/');
       } else {
         if (response.status === 422) {
           const errors = result.errors;

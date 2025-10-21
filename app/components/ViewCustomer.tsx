@@ -11,6 +11,7 @@ import {
     useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { useUser } from '../context/UserContext';
 
 // Mock data - In production, this would come from a database
 const mockCheckIns = [
@@ -62,6 +63,10 @@ const AccordionSection: React.FC<AccordionSectionProps> = ({ title, icon, childr
 
 const ViewCustomer: React.FC = () => {
   const router = useRouter();
+  const { loginData } = useUser();
+  const hasEditCustomerPermission = loginData?.permissions?.some(
+    (p) => p.permission === '4' && p.is_granted === 1
+  );
   const params = useLocalSearchParams();
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
@@ -104,12 +109,18 @@ const ViewCustomer: React.FC = () => {
   return (
     <View style={styles.container}>
       {/* Header with Back Button */}
-      <View style={[styles.header, isTablet && { paddingHorizontal: 32 }]}>
+      <View style={[styles.header, isTablet && { paddingHorizontal: 32 }]}> 
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Icon name="arrow-back" size={24} color="#FF6B35" />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, isTablet && { fontSize: 22 }]}>Customer Details</Text>
-        <View style={styles.headerActions} />
+        <View style={styles.headerActions}>
+          {loginData?.permissions?.some((p) => p.permission === '5' && p.is_granted === 1) && (
+            <TouchableOpacity style={styles.deleteButton}>
+              <Icon name="trash-outline" size={24} color="#e74c3c" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView 
@@ -173,51 +184,57 @@ const ViewCustomer: React.FC = () => {
             </View>
             <View style={styles.membershipButtonDivider} />
             <View style={styles.membershipButtonRow}>
-              <TouchableOpacity 
-                style={[styles.membershipActionButton, styles.transactionButton, isTablet && styles.membershipActionButtonTablet]}
-                onPress={() => router.push({
-                  pathname: '/CreateTransaction',
-                  params: { customerId: customer.id, customerName: customer.name }
-                })}
-              >
-                <Icon name="add-circle-outline" size={isTablet ? 20 : 18} color="#fff" />
-                <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}>
-                  Transaction
-                </Text>
-              </TouchableOpacity>
+              {loginData?.permissions?.some((p) => p.permission === '5' && p.is_granted === 1) && (
+                <TouchableOpacity 
+                  style={[styles.membershipActionButton, styles.transactionButton, isTablet && styles.membershipActionButtonTablet]}
+                  onPress={() => router.push({
+                    pathname: '/CreateTransaction',
+                    params: { customerId: customer.id, customerName: customer.name }
+                  })}
+                >
+                  <Icon name="add-circle-outline" size={isTablet ? 20 : 18} color="#fff" />
+                  <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}> 
+                    Transaction
+                  </Text>
+                </TouchableOpacity>
+              )}
 
-              <TouchableOpacity 
-                style={[styles.membershipActionButton, styles.editButton, isTablet && styles.membershipActionButtonTablet]}
-                onPress={() => router.push({
-                  pathname: '/EditCustomer',
-                  params: { customerId: customer.id }
-                })}
-              >
-                <Icon name="create-outline" size={isTablet ? 20 : 18} color="#fff" />
-                <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}>
-                  Edit
-                </Text>
-              </TouchableOpacity>
+              {hasEditCustomerPermission && (
+                <>
+                  <TouchableOpacity 
+                    style={[styles.membershipActionButton, styles.editButton, isTablet && styles.membershipActionButtonTablet]}
+                    onPress={() => router.push({
+                      pathname: '/EditCustomer',
+                      params: { customerId: customer.id }
+                    })}
+                  >
+                    <Icon name="create-outline" size={isTablet ? 20 : 18} color="#fff" />
+                    <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}> 
+                      Edit
+                    </Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={[styles.membershipActionButton, styles.freezeButton, isTablet && styles.membershipActionButtonTablet]}
-                onPress={() => Alert.alert('Freeze Account', 'Are you sure you want to freeze this account?')}
-              >
-                <Icon name="pause-outline" size={isTablet ? 20 : 18} color="#fff" />
-                <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}>
-                  Freeze
-                </Text>
-              </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.membershipActionButton, styles.freezeButton, isTablet && styles.membershipActionButtonTablet]}
+                    onPress={() => Alert.alert('Freeze Account', 'Are you sure you want to freeze this account?')}
+                  >
+                    <Icon name="pause-outline" size={isTablet ? 20 : 18} color="#fff" />
+                    <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}> 
+                      Freeze
+                    </Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={[styles.membershipActionButton, styles.terminateButton, isTablet && styles.membershipActionButtonTablet]}
-                onPress={() => Alert.alert('Terminate Membership', 'Are you sure you want to terminate this membership?')}
-              >
-                <Icon name="close-circle-outline" size={isTablet ? 20 : 18} color="#fff" />
-                <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}>
-                  Terminate
-                </Text>
-              </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.membershipActionButton, styles.terminateButton, isTablet && styles.membershipActionButtonTablet]}
+                    onPress={() => Alert.alert('Terminate Membership', 'Are you sure you want to terminate this membership?')}
+                  >
+                    <Icon name="close-circle-outline" size={isTablet ? 20 : 18} color="#fff" />
+                    <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}> 
+                      Terminate
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
         </View>
@@ -366,6 +383,17 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
+  },
+  deleteButton: {
+    marginLeft: 8,
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: '#fff',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
     color: '#333',
   },
   headerActions: {

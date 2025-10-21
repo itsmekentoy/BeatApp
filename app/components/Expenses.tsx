@@ -3,6 +3,8 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { useUser } from '../context/UserContext';
+import apiConnector from '../utils/apiConnector';
 
 interface Expense {
   id: string;
@@ -16,6 +18,10 @@ const Expenses = () => {
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
   const router = useRouter();
+  const { loginData } = useUser();
+  const hasAddExpensePermission = loginData?.permissions?.some(
+    (p) => p.permission === '7' && p.is_granted === 1
+  );
 
   // Mock expense data
   const [expenses, setExpenses] = useState<Expense[]>([
@@ -35,6 +41,7 @@ const Expenses = () => {
     description: '',
     amount: '',
   });
+  const [isSubmitting, setIsSubmitting] = useState(false); // State to track submission
 
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -86,25 +93,80 @@ const Expenses = () => {
   };
 
   // Handle add expense
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     if (!newExpense.category.trim() || !newExpense.description.trim() || !newExpense.amount.trim()) {
       Alert.alert('Validation Error', 'Please fill in all fields');
       return;
     }
 
+    setIsSubmitting(true); // Set submitting state to true
+
     const expense: Expense = {
-      id: Date.now().toString(),
       date: new Date(),
       category: newExpense.category,
       description: newExpense.description,
       amount: parseFloat(newExpense.amount),
+      id: ''
     };
 
-    setExpenses([expense, ...expenses]);
-    setNewExpense({ category: '', description: '', amount: '' });
-    setShowAddModal(false);
-    Alert.alert('Success', 'Expense added successfully!');
+    const formData = new FormData();
+    formData.append('expense_date', expense.date.toISOString());
+    formData.append('expense_type', expense.category);
+    formData.append('description', expense.description);
+    formData.append('amount', expense.amount.toString());
+
+    try {
+      const response = await apiConnector.request('Beat/expenses/add', {
+        method: 'POST',
+        body: formData,
+      });
+      console.log('Add Expense Response:', response);
+
+      if (response.ok) {
+        const result = await response.json();
+        expense.id = result.id; // Assuming the API returns the new expense ID
+        setExpenses([expense, ...expenses]);
+        setNewExpense({ category: '', description: '', amount: '' });
+        setShowAddModal(false);
+        Alert.alert('Success', 'Expense added successfully!');
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.message || 'Failed to add expense');
+      }
+    } catch (error) {
+      console.error('Error adding expense:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setIsSubmitting(false); // Reset submitting state
+    }
   };
+
+  // Fetch expenses from API
+  const fetchExpenses = async () => {
+    try {
+      const response = await apiConnector.request('Beat/expenses');
+      if (response.ok) {
+        const data = await response.json();
+        const formattedExpenses = data.map((expense: any) => ({
+          id: expense.id.toString(),
+          date: new Date(expense.expense_date),
+          category: expense.expense_type,
+          description: expense.description,
+          amount: parseFloat(expense.amount),
+        }));
+        setExpenses(formattedExpenses);
+      } else {
+        Alert.alert('Error', 'Failed to fetch expenses');
+      }
+    } catch (error) {
+      console.error('Error fetching expenses:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+  };
+
+  React.useEffect(() => {
+    fetchExpenses();
+  }, []);
 
   // Render table header
   const renderTableHeader = () => (
@@ -117,6 +179,8 @@ const Expenses = () => {
   );
 
   // Render expense row
+  const hasEditExpensePermission = loginData?.permissions?.some((p) => p.permission === '8' && p.is_granted === 1);
+  const hasDeleteExpensePermission = loginData?.permissions?.some((p) => p.permission === '9' && p.is_granted === 1);
   const renderExpenseRow = ({ item }: { item: Expense }) => (
     <View style={styles.tableRow}>
       <Text style={[styles.tableCell, isTablet && { fontSize: 15 }, isTablet ? styles.dateColumnTablet : styles.dateColumn]}>
@@ -127,6 +191,19 @@ const Expenses = () => {
       <Text style={[styles.tableCell, isTablet && { fontSize: 15 }, isTablet ? styles.amountColumnTablet : styles.amountColumn, styles.amountText]}>
         ₱{item.amount.toLocaleString()}
       </Text>
+      {/* Action Buttons */}
+      <View style={styles.actionCell}>
+        {hasEditExpensePermission && (
+          <TouchableOpacity style={styles.actionButton}>
+            <Icon name="create-outline" size={18} color="#3498db" />
+          </TouchableOpacity>
+        )}
+        {hasDeleteExpensePermission && (
+          <TouchableOpacity style={styles.actionButton}>
+            <Icon name="trash-outline" size={18} color="#e74c3c" />
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 
@@ -135,13 +212,14 @@ const Expenses = () => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.title, isTablet && { fontSize: 28 }]}>Expenses</Text>
-        <TouchableOpacity
-          style={[styles.addButton, isTablet && styles.addButtonTablet]}
-          onPress={() => setShowAddModal(true)}
-        >
-          <Icon name="add-circle" size={isTablet ? 28 : 24} color="#FFF" />
-          <Text style={[styles.addButtonText, isTablet && { fontSize: 16 }]}>Add Expense</Text>
-        </TouchableOpacity>
+        {hasAddExpensePermission && (
+          <TouchableOpacity
+            style={[styles.addButton, isTablet ? { padding: 14, borderRadius: 12 } : { padding: 10, borderRadius: 8 }]}
+            onPress={() => setShowAddModal(true)}
+          >
+            <Icon name="add-circle" size={isTablet ? 28 : 22} color="#fff" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Search and Filter */}
@@ -362,8 +440,9 @@ const Expenses = () => {
               <TouchableOpacity
                 style={[styles.button, styles.saveButton]}
                 onPress={handleAddExpense}
+                disabled={isSubmitting} // Disable button while submitting
               >
-                <Text style={styles.saveButtonText}>Add Expense</Text>
+                <Text style={styles.saveButtonText}>{isSubmitting ? 'Adding...' : 'Add Expense'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -394,6 +473,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#FF6B35',
     paddingVertical: 10,
+  },
+  actionCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 70,
+    gap: 8,
+  },
+  actionButton: {
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    padding: 4,
+    marginHorizontal: 2,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
     paddingHorizontal: 16,
     borderRadius: 8,
     alignItems: 'center',

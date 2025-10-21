@@ -1,17 +1,19 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import React, { useMemo, useState } from 'react';
 import {
-    Alert,
-    FlatList,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  Alert,
+  FlatList,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import apiConnector from '../utils/apiConnector'; // Adjust the import based on your project structure
 
 interface Product {
   id: string;
@@ -38,49 +40,52 @@ export default function Sell() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
 
-  const [products, setProducts] = useState<Product[]>([
-    {
-      id: '1',
-      name: 'Whey Protein',
-      category: 'Supplements',
-      price: 1500,
-      quantity: 25,
-      description: 'High-quality whey protein powder',
-    },
-    {
-      id: '2',
-      name: 'Pre-Workout',
-      category: 'Supplements',
-      price: 1200,
-      quantity: 15,
-      description: 'Energy boost before workout',
-    },
-    {
-      id: '3',
-      name: 'Water Bottle',
-      category: 'Accessories',
-      price: 500,
-      quantity: 50,
-      description: '1L water bottle',
-    },
-    {
-      id: '4',
-      name: 'Resistance Band',
-      category: 'Equipment',
-      price: 300,
-      quantity: 30,
-      description: 'Set of 3 resistance bands',
-    },
-  ]);
+  const [products, setProducts] = useState<Product[]>([]);
+  // Date filter states
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  // Filter transactions by date
+  const filteredTransactions = useMemo(() => {
+    if (!startDate && !endDate) return transactions;
+    return transactions.filter((tx) => {
+      const txDate = new Date(tx.created_at);
+      if (startDate && txDate < startDate) return false;
+      if (endDate && txDate > endDate) return false;
+      return true;
+    });
+  }, [transactions, startDate, endDate]);
+  const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
+  const [isTransactionModalVisible, setIsTransactionModalVisible] = useState(false);
+  // Fetch sold products (transactions)
+  const fetchSoldProducts = async () => {
+    try {
+      const response = await apiConnector.request('Beat/sold-products');
+      if (response.ok) {
+        const data = await response.json();
+        setTransactions(data.transactions);
+      } else {
+        Alert.alert('Error', 'Failed to fetch sold products');
+      }
+    } catch (error) {
+      console.error('Error fetching sold products:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+  };
 
   const [isSellModalVisible, setIsSellModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilterCategory, setSelectedFilterCategory] = useState('All');
   const [sales, setSales] = useState<Sale[]>([]);
+  const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
+  const [totalPrice, setTotalPrice] = useState(0);
   const [sellFormData, setSellFormData] = useState({
-    quantity: 0,
     customerName: '',
+    customerEmail: '',
+    quantity: 0,
   });
 
   // Filter and search products
@@ -93,61 +98,224 @@ export default function Sell() {
     });
   }, [products, searchQuery, selectedFilterCategory]);
 
-  const handleSellProduct = () => {
-    if (!selectedProduct) {
-      Alert.alert('Error', 'No product selected');
+  const addToCart = (product: Product, quantity: number) => {
+    if (quantity <= 0 || quantity > product.quantity) {
+      Alert.alert('Error', 'Invalid quantity');
       return;
     }
 
-    if (sellFormData.quantity <= 0) {
-      Alert.alert('Validation Error', 'Please enter a valid quantity');
+    setCart(prevCart => {
+      const existingItem = prevCart.find(item => item.product.id === product.id);
+      if (existingItem) {
+        return prevCart.map(item =>
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
+        );
+      } else {
+        return [...prevCart, { product, quantity }];
+      }
+    });
+
+    setTotalPrice(prevTotal => prevTotal + product.price * quantity);
+  };
+
+  const handleCompleteSale = async () => {
+    if (cart.length === 0) {
+      Alert.alert('Error', 'No products in the cart');
       return;
     }
 
-    if (sellFormData.quantity > selectedProduct.quantity) {
-      Alert.alert('Error', 'Insufficient stock. Available: ' + selectedProduct.quantity);
+    if (!sellFormData.customerEmail.trim()) {
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
-    const totalPrice = sellFormData.quantity * selectedProduct.price;
-    const newSale: Sale = {
-      id: Date.now().toString(),
-      productId: selectedProduct.id,
-      productName: selectedProduct.name,
-      quantity: sellFormData.quantity,
-      totalPrice: totalPrice,
-      customerName: sellFormData.customerName.trim() || undefined,
-      date: new Date().toLocaleDateString(),
-    };
+    try {
+      const saleData = cart.map(item => ({
+        product_id: item.product.id,
+        quantity: item.quantity,
+        total_price: item.product.price * item.quantity,
+      }));
 
-    // Update product quantity
-    const updatedProducts = products.map(p =>
-      p.id === selectedProduct.id
-        ? { ...p, quantity: p.quantity - sellFormData.quantity }
-        : p,
-    );
-    setProducts(updatedProducts);
+      const response = await apiConnector.request('Beat/sell-product', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer_name: sellFormData.customerName,
+          customer_email: sellFormData.customerEmail,
+          items: saleData,
+        }),
+      });
 
-    // Add to sales record
-    setSales([...sales, newSale]);
+      if (response.ok) {
+        // Update local state after successful sale
+        const updatedProducts = products.map(product => {
+          const cartItem = cart.find(item => item.product.id === product.id);
+          if (cartItem) {
+            return { ...product, quantity: product.quantity - cartItem.quantity };
+          }
+          return product;
+        });
 
-    // Reset and close modal
-    setSellFormData({ quantity: 0, customerName: '' });
-    setIsSellModalVisible(false);
-    Alert.alert('Success', `Sold ${sellFormData.quantity} unit(s) of ${selectedProduct.name}\nTotal: ₱${totalPrice.toLocaleString()}`);
+        setProducts(updatedProducts);
+        setCart([]);
+        setTotalPrice(0);
+        setIsSellModalVisible(false);
+        Alert.alert('Success', 'Sale completed successfully');
+      } else {
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.message || 'Failed to complete sale');
+      }
+    } catch (error) {
+      console.error('Error completing sale:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
   };
 
   const openSellModal = (product: Product) => {
     setSelectedProduct(null);
-    setSellFormData({ quantity: 0, customerName: '' });
     setIsSellModalVisible(true);
   };
+
+  const renderSellModal = () => (
+    <Modal
+      visible={isSellModalVisible}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setIsSellModalVisible(false)}
+    >
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Sell Products</Text>
+
+          {/* Customer Name Input */}
+          <TextInput
+            style={styles.input}
+            placeholder="Enter Customer Name"
+            value={sellFormData.customerName}
+            onChangeText={(text) => setSellFormData({ ...sellFormData, customerName: text })}
+          />
+
+          {/* Customer Email Input */}
+          <TextInput
+            style={styles.input}
+            placeholder="Enter Customer Email"
+            value={sellFormData.customerEmail}
+            onChangeText={(text) => setSellFormData({ ...sellFormData, customerEmail: text })}
+          />
+
+          {/* Dropdown for Product Selection */}
+          <Text style={styles.label}>Select Product</Text>
+          <Picker
+            style={styles.picker} // Applied the picker style with border
+            selectedValue={selectedProduct?.id || ''}
+            onValueChange={(itemValue: string) => {
+              const product = products.find(p => p.id === itemValue);
+              if (product) {
+                const existingItem = cart.find(cartItem => cartItem.product.id === product.id);
+                if (existingItem) {
+                  Alert.alert('Error', 'Product already in cart');
+                } else {
+                  setCart([...cart, { product, quantity: 1 }]);
+                }
+              }
+            }}
+          >
+            <Picker.Item label="Select a product" value="" />
+            {products
+              .filter(product => product.quantity > 0) // Exclude products with quantity 0
+              .map(product => (
+                <Picker.Item key={product.id} label={product.name} value={product.id} />
+              ))}
+          </Picker>
+
+          {/* Cart Items */}
+          <Text style={styles.label}>Cart</Text>
+          <FlatList
+            data={cart}
+            keyExtractor={(item) => item.product.id}
+            renderItem={({ item }) => (
+              <View style={styles.cartItem}>
+                <Text style={styles.cartProductName}>{item.product.name}</Text>
+                <TextInput
+                  style={styles.cartQuantityInput}
+                  keyboardType="numeric"
+                  value={item.quantity.toString()}
+                  onChangeText={(text) => {
+                    const quantity = parseInt(text) || 0;
+                    if (quantity > item.product.quantity) {
+                      Alert.alert('Error', 'Insufficient stock');
+                    } else {
+                      setCart(prevCart =>
+                        prevCart.map(cartItem =>
+                          cartItem.product.id === item.product.id
+                            ? { ...cartItem, quantity }
+                            : cartItem
+                        )
+                      );
+                    }
+                  }}
+                />
+                <Text style={styles.cartSubtotal}>
+                  Subtotal: ₱{(item.product.price * item.quantity).toLocaleString()}
+                </Text>
+              </View>
+            )}
+          />
+
+          {/* Grand Total */}
+          <Text style={styles.grandTotal}>Grand Total: ₱{cart.reduce((total, item) => total + item.product.price * item.quantity, 0).toLocaleString()}</Text>
+
+          {/* Action Buttons */}
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity
+              style={styles.completeButton}
+              onPress={handleCompleteSale}
+            >
+              <Text style={styles.completeButtonText}>Complete Sale</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const fetchProducts = async () => {
+    try {
+      const response = await apiConnector.request('Beat/products');
+      if (response.ok) {
+        const data = await response.json();
+        const formattedProducts = data.map((product: any) => ({
+          id: product.id.toString(),
+          name: product.product_name,
+          category: product.category,
+          description: product.description,
+          price: parseFloat(product.price),
+          quantity: product.stock_quantity,
+        }));
+        setProducts(formattedProducts);
+      } else {
+        Alert.alert('Error', 'Failed to fetch products');
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+  };
+
+  React.useEffect(() => {
+    fetchProducts();
+    fetchSoldProducts();
+  }, []);
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Text style={styles.title}>Sales Record</Text>
+          <Text style={styles.title}>Sold Products</Text>
           <TouchableOpacity
             style={styles.sellProductButton}
             onPress={() => openSellModal(products[0])}
@@ -156,189 +324,193 @@ export default function Sell() {
             <Text style={styles.sellProductButtonText}>Sell Product</Text>
           </TouchableOpacity>
         </View>
-        {sales.length > 0 && (
-          <View style={styles.summaryBox}>
-            <Text style={styles.summaryLabel}>Total Sales:</Text>
-            <Text style={styles.summaryAmount}>
-              ₱{sales.reduce((sum, sale) => sum + sale.totalPrice, 0).toLocaleString()}
-            </Text>
-          </View>
-        )}
       </View>
 
-      {/* Sales History Section */}
-      {sales.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Icon name="cart-outline" size={64} color="#ccc" />
-          <Text style={styles.emptyStateText}>No Sales Yet</Text>
-          <Text style={styles.emptyStateSubtext}>Tap "Sell Product" to record your first sale</Text>
-        </View>
-      ) : (
-        <View style={styles.salesTableSection}>
-          {/* Sales Table Header */}
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderCell, { flex: 1.5 }]}>Product</Text>
-            <Text style={[styles.tableHeaderCell, { flex: 1, textAlign: 'center' }]}>Date</Text>
-            <Text style={[styles.tableHeaderCell, { flex: 0.8, textAlign: 'center' }]}>Qty</Text>
-            <Text style={[styles.tableHeaderCell, { flex: 1.2, textAlign: 'right' }]}>Amount</Text>
+      {/* Date Filter UI */}
+      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16, alignItems: 'center' }}>
+        <TouchableOpacity onPress={() => setShowStartPicker(true)} style={{ flex: 1 }}>
+          <Text style={styles.label}>Start Date</Text>
+          <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}> 
+            <Text>{startDate ? startDate.toLocaleDateString() : 'Select start date'}</Text>
+            <Icon name="calendar-outline" size={20} color="#666" />
           </View>
-
-          {/* Sales Table Rows */}
-          <FlatList
-            data={sales}
-            keyExtractor={item => item.id}
-            renderItem={({ item, index }) => (
-              <View style={[styles.tableRow, index % 2 === 0 && styles.tableRowAlt]}>
-                <View style={{ flex: 1.5 }}>
-                  <Text style={styles.tableCellText}>{item.productName}</Text>
-                  {item.customerName && (
-                    <Text style={styles.customerNameText}>Buyer: {item.customerName}</Text>
-                  )}
-                </View>
-                <Text style={[styles.tableCellText, { flex: 1, textAlign: 'center', fontSize: 12 }]}>
-                  {item.date}
-                </Text>
-                <Text style={[styles.tableCellText, { flex: 0.8, textAlign: 'center' }]}>
-                  {item.quantity}
-                </Text>
-                <Text style={[styles.tableCellText, { flex: 1.2, textAlign: 'right', fontWeight: '700', color: '#27ae60' }]}>
-                  ₱{item.totalPrice.toLocaleString()}
-                </Text>
-              </View>
-            )}
-            scrollEnabled={false}
-            nestedScrollEnabled={false}
-            contentContainerStyle={styles.listContent}
-          />
-        </View>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setShowEndPicker(true)} style={{ flex: 1 }}>
+          <Text style={styles.label}>End Date</Text>
+          <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}> 
+            <Text>{endDate ? endDate.toLocaleDateString() : 'Select end date'}</Text>
+            <Icon name="calendar-outline" size={20} color="#666" />
+          </View>
+        </TouchableOpacity>
+      </View>
+      {showStartPicker && (
+        <DateTimePicker
+          value={startDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowStartPicker(false);
+            if (date) setStartDate(date);
+          }}
+        />
+      )}
+      {showEndPicker && (
+        <DateTimePicker
+          value={endDate || new Date()}
+          mode="date"
+          display="default"
+          onChange={(event, date) => {
+            setShowEndPicker(false);
+            if (date) setEndDate(date);
+          }}
+        />
       )}
 
-      {/* Sell Product Modal */}
+      {/* Transactions List */}
+      {filteredTransactions.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Icon name="cart-outline" size={64} color="#ccc" />
+          <Text style={styles.emptyStateText}>No Sold Products Yet</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredTransactions}
+          keyExtractor={item => item.id.toString()}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.transactionBox}
+              onPress={() => {
+                setSelectedTransaction(item);
+                setIsTransactionModalVisible(true);
+              }}
+            >
+              <Text style={styles.transactionName}>{item.customer_name}</Text>
+              <Text style={styles.transactionTotal}>₱ {parseFloat(item.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+              <Text style={styles.transactionDate}>{new Date(item.created_at).toLocaleString()}</Text>
+            </TouchableOpacity>
+          )}
+          contentContainerStyle={{ gap: 12, paddingVertical: 8 }}
+        />
+      )}
+
+      {/* Transaction Modal */}
       <Modal
-        visible={isSellModalVisible}
-        transparent
+        visible={isTransactionModalVisible}
+        transparent={true}
         animationType="slide"
-        onRequestClose={() => setIsSellModalVisible(false)}
+        onRequestClose={() => setIsTransactionModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isTablet && styles.modalContentTablet]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {selectedProduct ? 'Sell Product' : 'Select Product'}
-              </Text>
-              <TouchableOpacity onPress={() => setIsSellModalVisible(false)}>
-                <Icon name="close" size={24} color="#333" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalForm}>
-              {!selectedProduct ? (
-                <>
-                  {/* Product Selection */}
-                  <View style={styles.productListContainer}>
-                    {products.map(product => (
-                      <TouchableOpacity
-                        key={product.id}
-                        style={styles.productSelectItem}
-                        onPress={() => setSelectedProduct(product)}
-                      >
-                        <View style={styles.productSelectInfo}>
-                          <Text style={styles.productSelectName}>{product.name}</Text>
-                          <Text style={styles.productSelectCategory}>{product.category}</Text>
-                          <Text style={styles.productSelectPrice}>
-                            Price: ₱{product.price.toLocaleString()} | Stock: {product.quantity}
-                          </Text>
-                        </View>
-                        <Icon name="chevron-forward" size={20} color="#FF6B35" />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
-              ) : (
-                <>
-                  <View style={styles.productInfoBox}>
-                    <Text style={styles.productInfoLabel}>Product:</Text>
-                    <Text style={styles.productInfoValue}>{selectedProduct.name}</Text>
-
-                    <Text style={styles.productInfoLabel}>Available Stock:</Text>
-                    <Text style={[styles.productInfoValue, selectedProduct.quantity < 10 && styles.lowStockValue]}>
-                      {selectedProduct.quantity} units
-                    </Text>
-
-                    <Text style={styles.productInfoLabel}>Price per Unit:</Text>
-                    <Text style={styles.productInfoValue}>₱{selectedProduct.price.toLocaleString()}</Text>
-                  </View>
-
-                  <View style={styles.divider} />
-
-                  <View style={styles.formGroup}>
-                    <Text style={styles.formLabel}>Quantity to Sell *</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter quantity"
-                      keyboardType="numeric"
-                      value={sellFormData.quantity.toString()}
-                      onChangeText={text =>
-                        setSellFormData({ ...sellFormData, quantity: parseInt(text) || 0 })
-                      }
-                    />
-                  </View>
-
-                  {sellFormData.quantity > 0 && (
-                    <View style={styles.totalBox}>
-                      <View style={styles.totalRow}>
-                        <Text style={styles.totalLabel}>Quantity:</Text>
-                        <Text style={styles.totalValue}>{sellFormData.quantity} unit(s)</Text>
-                      </View>
-                      <View style={styles.totalRow}>
-                        <Text style={styles.totalLabel}>Unit Price:</Text>
-                        <Text style={styles.totalValue}>₱{selectedProduct.price.toLocaleString()}</Text>
-                      </View>
-                      <View style={[styles.totalRow, styles.totalRowHighlight]}>
-                        <Text style={styles.totalLabelBold}>Total Amount:</Text>
-                        <Text style={styles.totalValueBold}>₱{(sellFormData.quantity * selectedProduct.price).toLocaleString()}</Text>
-                      </View>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Sold Items</Text>
+            {selectedTransaction && (
+              <>
+                <Text style={styles.transactionNameModal}>{selectedTransaction.customer_name}</Text>
+                <Text style={styles.transactionTotalModal}>₱ {parseFloat(selectedTransaction.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                <Text style={styles.transactionDateModal}>{new Date(selectedTransaction.created_at).toLocaleString()}</Text>
+                <FlatList
+                  data={selectedTransaction.items}
+                  keyExtractor={item => item.product_id.toString()}
+                  renderItem={({ item }) => (
+                    <View style={styles.soldItemBox}>
+                      <Text style={{ fontWeight: 'bold' }}>{item.product_name}</Text>
+                      <Text>Category: {item.category}</Text>
+                      <Text>Quantity: {item.quantity}</Text>
+                      <Text>Price: ₱{parseFloat(item.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                      <Text>Subtotal: ₱{parseFloat(item.sub_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
                     </View>
                   )}
-
-                  <View style={styles.formGroup}>
-                    <Text style={styles.formLabel}>Customer Name (Optional)</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter customer name"
-                      value={sellFormData.customerName}
-                      onChangeText={text =>
-                        setSellFormData({ ...sellFormData, customerName: text })
-                      }
-                    />
-                  </View>
-
-                  <View style={styles.modalButtonGroup}>
-                    <TouchableOpacity
-                      style={styles.backButton}
-                      onPress={() => {
-                        setSelectedProduct(null);
-                        setSellFormData({ quantity: 0, customerName: '' });
-                      }}
-                    >
-                      <Text style={styles.backButtonText}>Back to Products</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.submitButton} onPress={handleSellProduct}>
-                      <Text style={styles.submitButtonText}>Complete Sale</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-            </ScrollView>
+                  contentContainerStyle={{ gap: 8 }}
+                />
+              </>
+            )}
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setIsTransactionModalVisible(false)}
+            >
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
+      {/* Sell Product Modal */}
+      {renderSellModal()}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  transactionName: {
+    fontWeight: 'bold',
+    fontSize: 20,
+    color: '#FF6B35',
+    marginBottom: 4,
+  },
+  transactionTotal: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#27ae60',
+    marginBottom: 2,
+  },
+  transactionDate: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 2,
+  },
+  transactionNameModal: {
+    fontWeight: 'bold',
+    fontSize: 22,
+    color: '#FF6B35',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  transactionTotalModal: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#27ae60',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  transactionDateModal: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  closeButton: {
+    backgroundColor: '#eee',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  closeButtonText: {
+    color: '#333',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  transactionBox: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  transactionTitle: {
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  soldItemBox: {
+    backgroundColor: '#f2f2f2',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 4,
+  },
   container: {
     flex: 1,
     backgroundColor: '#f9f9f9',
@@ -356,7 +528,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
-    flex: 1,
   },
   sellProductButton: {
     flexDirection: 'row',
@@ -709,47 +880,31 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#27ae60',
   },
-  modalOverlay: {
+  modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    maxHeight: '90%',
-  },
-  modalContentTablet: {
-    maxHeight: '80%',
-    marginHorizontal: 100,
-    borderRadius: 20,
-    marginBottom: 50,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+    borderRadius: 12,
+    padding: 24,
+    width: '90%',
+    maxWidth: 500,
+    elevation: 4,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#333',
-  },
-  modalForm: {
-    paddingBottom: 20,
-  },
-  formGroup: {
     marginBottom: 16,
   },
-  formLabel: {
-    fontSize: 13,
-    fontWeight: '600',
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
     color: '#333',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   input: {
     borderWidth: 1,
@@ -759,29 +914,72 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     backgroundColor: '#f9f9f9',
+    marginBottom: 16,
   },
-  productInfoBox: {
-    backgroundColor: '#f9f9f9',
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
+  productItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  productInfoLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  productInfoValue: {
+  productNameSmall: {
     fontSize: 14,
     fontWeight: '600',
     color: '#333',
   },
-  lowStockValue: {
-    color: '#e74c3c',
+  productPrice: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#27ae60',
+  },
+  quantityContainer: {
+    marginBottom: 16,
+  },
+  subtotal: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginTop: 8,
+  },
+  grandTotal: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FF6B35',
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  addButton: {
+    flex: 1,
+    backgroundColor: '#27ae60',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  addButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  completeButton: {
+    flex: 1,
+    backgroundColor: '#FF6B35',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  completeButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   divider: {
     height: 1,
@@ -841,4 +1039,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  cartItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  cartProductName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  cartQuantityInput: {
+    fontSize: 18, // Increased font size
+    fontWeight: '500',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 4,
+    padding: 8,
+    textAlign: 'center',
+    width: 60, // Adjusted width for better visibility
+    marginRight: 8,
+  },
+  cartSubtotal: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+  },
+  picker: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 4,
+    marginBottom: 16,
+  },
 });
+

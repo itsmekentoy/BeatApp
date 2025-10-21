@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { UserProvider } from "./context/UserContext";
 
 // Mock auth context - in a real app, this would check actual auth state
 let isLoggedIn = false;
@@ -32,38 +33,16 @@ export default function RootLayout() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="ServerConfig" options={{ headerShown: false }} />
-      <Stack.Screen name="Login" options={{ headerShown: false }} />
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen 
-        name="AddCustomer" 
-        options={{ 
-          presentation: 'card',
-          headerShown: false,
-        }} 
-      />
-      <Stack.Screen 
-        name="ViewCustomer" 
-        options={{ 
-          presentation: 'card',
-          headerShown: false,
-        }} 
-      />
-      <Stack.Screen 
-        name="EditCustomer" 
-        options={{ 
-          presentation: 'card',
-          headerShown: false,
-        }} 
-      />
-      <Stack.Screen 
-        name="CreateTransaction" 
-        options={{ 
-          presentation: 'card',
-          headerShown: false,
-        }} 
-      />
-    </Stack>
+    <UserProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="ServerConfig" options={{ headerShown: false }} />
+        <Stack.Screen name="Login" options={{ headerShown: false }} />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="AddCustomer" options={{ presentation: 'card', headerShown: false }} />
+        <Stack.Screen name="ViewCustomer" options={{ presentation: 'card', headerShown: false }} />
+        <Stack.Screen name="EditCustomer" options={{ presentation: 'card', headerShown: false }} />
+        <Stack.Screen name="CreateTransaction" options={{ presentation: 'card', headerShown: false }} />
+      </Stack>
+    </UserProvider>
   );
 }

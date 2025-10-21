@@ -3,6 +3,7 @@ import moment from 'moment';
 import React, { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { useUser } from '../context/UserContext';
 import apiConnector from '../utils/apiConnector';
 
 const getStatusColor = (status: string) => {
@@ -40,6 +41,10 @@ const Customer: React.FC = () => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<any[]>([]);
+  const { loginData } = useUser();
+  const hasAddCustomerPermission = loginData?.permissions?.some(
+    (p) => p.permission === '3' && p.is_granted === 1
+  );
 
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -88,12 +93,14 @@ const Customer: React.FC = () => {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Customer List</Text>
-        <TouchableOpacity
-          style={[styles.addButton, isTablet ? { padding: 14, borderRadius: 12 } : { padding: 10, borderRadius: 8 }]}
-          onPress={() => router.push('/AddCustomer')}
-        >
-          <Icon name="person-add" size={isTablet ? 28 : 22} color="#fff" />
-        </TouchableOpacity>
+        {hasAddCustomerPermission && (
+          <TouchableOpacity
+            style={[styles.addButton, isTablet ? { padding: 14, borderRadius: 12 } : { padding: 10, borderRadius: 8 }]}
+            onPress={() => router.push('/AddCustomer')}
+          >
+            <Icon name="person-add" size={isTablet ? 28 : 22} color="#fff" />
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.searchContainer}>

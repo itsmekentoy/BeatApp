@@ -1,5 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useUser } from '../context/UserContext';
 
 const isTablet = () => {
   const { width, height } = useWindowDimensions();
@@ -31,24 +32,32 @@ const expiringMembers = [
 
 export default function Home() {
   const tablet = isTablet();
+  const { loginData } = useUser();
+  const hasFinancialPermission = loginData?.permissions?.some(
+    (p) => p.permission === '1' && p.is_granted === 1
+  );
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
-      {/* Financial Overview */}
-      <Text style={styles.sectionTitle}>Monthly Financial Overview</Text>
-      <View style={[styles.row, tablet && styles.rowTablet]}>
-        <View style={[styles.card, tablet && styles.cardTablet]}>
-          <Text style={styles.cardLabel}>Total Sales</Text>
-          <Text style={[styles.cardValue, { color: '#27ae60' }]}>₱{financialData.totalSales.toLocaleString()}</Text>
-        </View>
-        <View style={[styles.card, tablet && styles.cardTablet]}>
-          <Text style={styles.cardLabel}>Total Expenses</Text>
-          <Text style={[styles.cardValue, { color: '#e74c3c' }]}>₱{financialData.totalExpenses.toLocaleString()}</Text>
-        </View>
-        <View style={[styles.card, tablet && styles.cardTablet]}>
-          <Text style={styles.cardLabel}>Net Income</Text>
-          <Text style={[styles.cardValue, { color: '#f39c12' }]}>₱{financialData.netIncome.toLocaleString()}</Text>
-        </View>
-      </View>
+      {/* Financial Overview (permission 1) */}
+      {hasFinancialPermission && (
+        <>
+          <Text style={styles.sectionTitle}>Monthly Financial Overview</Text>
+          <View style={[styles.row, tablet && styles.rowTablet]}>
+            <View style={[styles.card, tablet && styles.cardTablet]}>
+              <Text style={styles.cardLabel}>Total Sales</Text>
+              <Text style={[styles.cardValue, { color: '#27ae60' }]}>₱{financialData.totalSales.toLocaleString()}</Text>
+            </View>
+            <View style={[styles.card, tablet && styles.cardTablet]}>
+              <Text style={styles.cardLabel}>Total Expenses</Text>
+              <Text style={[styles.cardValue, { color: '#e74c3c' }]}>₱{financialData.totalExpenses.toLocaleString()}</Text>
+            </View>
+            <View style={[styles.card, tablet && styles.cardTablet]}>
+              <Text style={styles.cardLabel}>Net Income</Text>
+              <Text style={[styles.cardValue, { color: '#f39c12' }]}>₱{financialData.netIncome.toLocaleString()}</Text>
+            </View>
+          </View>
+        </>
+      )}
 
       {/* Membership Stats */}
       <Text style={styles.sectionTitle}>Membership Stats</Text>
