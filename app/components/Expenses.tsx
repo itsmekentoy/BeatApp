@@ -24,16 +24,7 @@ const Expenses = () => {
   );
 
   // Mock expense data
-  const [expenses, setExpenses] = useState<Expense[]>([
-    { id: '1', date: new Date('2025-10-15'), category: 'Utilities', description: 'Electricity Bill', amount: 3500 },
-    { id: '2', date: new Date('2025-10-12'), category: 'Maintenance', description: 'Equipment Repair', amount: 2800 },
-    { id: '3', date: new Date('2025-10-10'), category: 'Supplies', description: 'Cleaning Products', amount: 1200 },
-    { id: '4', date: new Date('2025-10-08'), category: 'Utilities', description: 'Water Bill', amount: 1500 },
-    { id: '5', date: new Date('2025-10-05'), category: 'Staff', description: 'Trainer Salary', amount: 15000 },
-    { id: '6', date: new Date('2025-09-28'), category: 'Equipment', description: 'New Dumbbells', amount: 8500 },
-    { id: '7', date: new Date('2025-09-20'), category: 'Utilities', description: 'Internet Bill', amount: 2000 },
-    { id: '8', date: new Date('2025-09-15'), category: 'Supplies', description: 'Towels & Mats', amount: 3200 },
-  ]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newExpense, setNewExpense] = useState({
@@ -55,14 +46,14 @@ const Expenses = () => {
   const getFilteredExpenses = () => {
     return expenses.filter(expense => {
       // Search filter
-      const matchesSearch = searchQuery === '' || 
+      const matchesSearch = searchQuery === '' ||
         expense.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
         expense.description.toLowerCase().includes(searchQuery.toLowerCase());
 
       // Date range filter
       const expenseDate = new Date(expense.date);
       const matchesDateRange = (!startDate || expenseDate >= startDate) &&
-                              (!endDate || expenseDate <= endDate);
+        (!endDate || expenseDate <= endDate);
 
       return matchesSearch && matchesDateRange;
     });
@@ -301,7 +292,7 @@ const Expenses = () => {
         />
       )}
 
-      
+
 
       {/* Expenses Table */}
       <View style={styles.tableContainer}>

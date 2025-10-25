@@ -32,48 +32,7 @@ const UserManagement = () => {
   const isTablet = width >= 600;
   const router = useRouter();
 
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: '1',
-      name: 'John Admin',
-      role: 'Administrator',
-      email: 'admin@gym.com',
-      password: 'admin123',
-      permissions: {
-        viewFinancialOverview: true,
-        membershipPlan: true,
-        customerAdd: true,
-        customerUpdate: true,
-        customerDelete: true,
-        addTransaction: true,
-        expenseAdd: true,
-        expenseUpdate: true,
-        expenseDelete: true,
-        userManagement: true,
-        emailConfiguration: true,
-      },
-    },
-    {
-      id: '2',
-      name: 'Jane Staff',
-      role: 'Staff',
-      email: 'staff@gym.com',
-      password: 'staff123',
-      permissions: {
-        viewFinancialOverview: false,
-        membershipPlan: false,
-        customerAdd: true,
-        customerUpdate: true,
-        customerDelete: false,
-        addTransaction: true,
-        expenseAdd: false,
-        expenseUpdate: false,
-        expenseDelete: false,
-        userManagement: false,
-        emailConfiguration: false,
-      },
-    },
-  ]);
+  const [users, setUsers] = useState<User[]>([]);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -400,7 +359,7 @@ const UserManagement = () => {
     const permissionCount = Object.values(item.permissions).filter(Boolean).length;
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.userCard, isTablet && styles.userCardTablet]}
         onPress={() => openEditModal(item)}
         activeOpacity={0.7}
@@ -520,138 +479,138 @@ const UserManagement = () => {
           </View>
 
           <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {/* User Details */}
-              <View style={styles.formSection}>
-                <Text style={styles.sectionTitle}>User Details</Text>
-                
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>Name *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter full name"
-                    value={formData.name}
-                    onChangeText={(text) => setFormData({ ...formData, name: text })}
-                  />
-                </View>
+            {/* User Details */}
+            <View style={styles.formSection}>
+              <Text style={styles.sectionTitle}>User Details</Text>
 
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>Role *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g., Administrator, Staff, Manager"
-                    value={formData.role}
-                    onChangeText={(text) => setFormData({ ...formData, role: text })}
-                  />
-                </View>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter full name"
+                  value={formData.name}
+                  onChangeText={(text) => setFormData({ ...formData, name: text })}
+                />
+              </View>
 
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>Email *</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Role *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g., Administrator, Staff, Manager"
+                  value={formData.role}
+                  onChangeText={(text) => setFormData({ ...formData, role: text })}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Email *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Enter email address"
+                  value={formData.email}
+                  onChangeText={(text) => setFormData({ ...formData, email: text })}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Password *</Text>
+                <View style={styles.passwordContainer}>
                   <TextInput
-                    style={styles.input}
-                    placeholder="Enter email address"
-                    value={formData.email}
-                    onChangeText={(text) => setFormData({ ...formData, email: text })}
-                    keyboardType="email-address"
+                    style={styles.passwordInput}
+                    placeholder="Enter password"
+                    value={formData.password}
+                    onChangeText={(text) => setFormData({ ...formData, password: text })}
+                    secureTextEntry={!showPassword}
                     autoCapitalize="none"
                   />
-                </View>
-
-                <View style={styles.formGroup}>
-                  <Text style={styles.label}>Password *</Text>
-                  <View style={styles.passwordContainer}>
-                    <TextInput
-                      style={styles.passwordInput}
-                      placeholder="Enter password"
-                      value={formData.password}
-                      onChangeText={(text) => setFormData({ ...formData, password: text })}
-                      secureTextEntry={!showPassword}
-                      autoCapitalize="none"
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeButton}
+                  >
+                    <Icon
+                      name={showPassword ? "eye-outline" : "eye-off-outline"}
+                      size={20}
+                      color="#999"
                     />
-                    <TouchableOpacity
-                      onPress={() => setShowPassword(!showPassword)}
-                      style={styles.eyeButton}
-                    >
-                      <Icon
-                        name={showPassword ? "eye-outline" : "eye-off-outline"}
-                        size={20}
-                        color="#999"
-                      />
-                    </TouchableOpacity>
-                  </View>
+                  </TouchableOpacity>
                 </View>
               </View>
+            </View>
 
-              {/* Permissions */}
-              <View style={styles.formSection}>
-                <Text style={styles.sectionTitle}>Permissions</Text>
-                <Text style={styles.sectionSubtitle}>Select what this user can access</Text>
+            {/* Permissions */}
+            <View style={styles.formSection}>
+              <Text style={styles.sectionTitle}>Permissions</Text>
+              <Text style={styles.sectionSubtitle}>Select what this user can access</Text>
 
-                <View style={styles.permissionsGrid}>
-                  <PermissionCheckbox
-                    label="1. View Financial Overview"
-                    checked={permissions.viewFinancialOverview}
-                    onToggle={() => togglePermission('viewFinancialOverview')}
-                  />
-                  <PermissionCheckbox
-                    label="2. Membership Plan"
-                    checked={permissions.membershipPlan}
-                    onToggle={() => togglePermission('membershipPlan')}
-                  />
-                  <PermissionCheckbox
-                    label="3. Customer Add"
-                    checked={permissions.customerAdd}
-                    onToggle={() => togglePermission('customerAdd')}
-                  />
-                  <PermissionCheckbox
-                    label="4. Customer Update"
-                    checked={permissions.customerUpdate}
-                    onToggle={() => togglePermission('customerUpdate')}
-                  />
-                  <PermissionCheckbox
-                    label="5. Customer Delete"
-                    checked={permissions.customerDelete}
-                    onToggle={() => togglePermission('customerDelete')}
-                  />
-                  <PermissionCheckbox
-                    label="6. Add Transaction"
-                    checked={permissions.addTransaction}
-                    onToggle={() => togglePermission('addTransaction')}
-                  />
-                  <PermissionCheckbox
-                    label="7. Expense Add"
-                    checked={permissions.expenseAdd}
-                    onToggle={() => togglePermission('expenseAdd')}
-                  />
-                  <PermissionCheckbox
-                    label="8. Expense Update"
-                    checked={permissions.expenseUpdate}
-                    onToggle={() => togglePermission('expenseUpdate')}
-                  />
-                  <PermissionCheckbox
-                    label="9. Expense Delete"
-                    checked={permissions.expenseDelete}
-                    onToggle={() => togglePermission('expenseDelete')}
-                  />
-                  <PermissionCheckbox
-                    label="10. User Management"
-                    checked={permissions.userManagement}
-                    onToggle={() => togglePermission('userManagement')}
-                  />
-                  <PermissionCheckbox
-                    label="11. Email Configuration"
-                    checked={permissions.emailConfiguration}
-                    onToggle={() => togglePermission('emailConfiguration')}
-                  />
-                </View>
+              <View style={styles.permissionsGrid}>
+                <PermissionCheckbox
+                  label="1. View Financial Overview"
+                  checked={permissions.viewFinancialOverview}
+                  onToggle={() => togglePermission('viewFinancialOverview')}
+                />
+                <PermissionCheckbox
+                  label="2. Membership Plan"
+                  checked={permissions.membershipPlan}
+                  onToggle={() => togglePermission('membershipPlan')}
+                />
+                <PermissionCheckbox
+                  label="3. Customer Add"
+                  checked={permissions.customerAdd}
+                  onToggle={() => togglePermission('customerAdd')}
+                />
+                <PermissionCheckbox
+                  label="4. Customer Update"
+                  checked={permissions.customerUpdate}
+                  onToggle={() => togglePermission('customerUpdate')}
+                />
+                <PermissionCheckbox
+                  label="5. Customer Delete"
+                  checked={permissions.customerDelete}
+                  onToggle={() => togglePermission('customerDelete')}
+                />
+                <PermissionCheckbox
+                  label="6. Add Transaction"
+                  checked={permissions.addTransaction}
+                  onToggle={() => togglePermission('addTransaction')}
+                />
+                <PermissionCheckbox
+                  label="7. Expense Add"
+                  checked={permissions.expenseAdd}
+                  onToggle={() => togglePermission('expenseAdd')}
+                />
+                <PermissionCheckbox
+                  label="8. Expense Update"
+                  checked={permissions.expenseUpdate}
+                  onToggle={() => togglePermission('expenseUpdate')}
+                />
+                <PermissionCheckbox
+                  label="9. Expense Delete"
+                  checked={permissions.expenseDelete}
+                  onToggle={() => togglePermission('expenseDelete')}
+                />
+                <PermissionCheckbox
+                  label="10. User Management"
+                  checked={permissions.userManagement}
+                  onToggle={() => togglePermission('userManagement')}
+                />
+                <PermissionCheckbox
+                  label="11. Email Configuration"
+                  checked={permissions.emailConfiguration}
+                  onToggle={() => togglePermission('emailConfiguration')}
+                />
               </View>
+            </View>
 
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleAddUser}
-              >
-                <Text style={styles.saveButtonText}>Add User</Text>
-              </TouchableOpacity>
-            </ScrollView>
+            <TouchableOpacity
+              style={styles.saveButton}
+              onPress={handleAddUser}
+            >
+              <Text style={styles.saveButtonText}>Add User</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -684,7 +643,7 @@ const UserManagement = () => {
             {/* User Details */}
             <View style={styles.formSection}>
               <Text style={styles.sectionTitle}>User Details</Text>
-              
+
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Name *</Text>
                 <TextInput

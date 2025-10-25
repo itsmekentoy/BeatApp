@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-
+import apiConnector from '../utils/apiConnector';
 const DoorControl = () => {
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
@@ -9,26 +9,89 @@ const DoorControl = () => {
   const [door2Status, setDoor2Status] = useState<'locked' | 'unlocked'>('locked');
   const [showInfo, setShowInfo] = useState(false);
 
-  const handleOpenDoor1 = () => {
-    setDoor1Status('unlocked');
-    // Here you would typically send a command to your door hardware
-    Alert.alert('Success', 'First door unlocked');
-    
-    // Auto-lock after 5 seconds
-    setTimeout(() => {
-      setDoor1Status('locked');
-    }, 5000);
+  // const handleOpenDoor1 = async () => {
+
+
+  //   try {
+  //     const response = await apiConnector.request('Beat/search-controller');
+  //     if (response.ok) {
+  //       const data = await response.json();
+  //       console.log('Sold Products:', data);
+  //     } else {
+  //       Alert.alert('Error', 'Failed to fetch sold products');
+  //     }
+  //   } catch (error) {
+  //     console.error('Error fetching sold products:', error);
+  //   }
+
+  // };
+
+  const handleOpenDoor1 = async () => {
+
+    try {
+      const response = await apiConnector.request('Beat/open-door', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          door_no: 1,
+          ip_address: '192.168.1.10',
+          sn: '222455417',
+        }),
+      });
+      if (response.ok) {
+        setDoor1Status('unlocked');
+        // Here you would typically send a command to your door hardware
+        Alert.alert('Success', 'First door unlocked');
+
+        // Auto-lock after 5 seconds
+        setTimeout(() => {
+          setDoor1Status('locked');
+        }, 3000);
+      } else {
+        Alert.alert('Error', 'Failed to unlock the first door');
+      }
+    } catch (error) {
+      console.error('Error unlocking the first door:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+
+
   };
 
-  const handleOpenDoor2 = () => {
-    setDoor2Status('unlocked');
-    // Here you would typically send a command to your door hardware
-    Alert.alert('Success', 'Second door unlocked');
-    
-    // Auto-lock after 5 seconds
-    setTimeout(() => {
-      setDoor2Status('locked');
-    }, 5000);
+  const handleOpenDoor2 = async () => {
+
+    try {
+      const response = await apiConnector.request('Beat/open-door', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          door_no: 2,
+          ip_address: '192.168.1.10',
+          sn: '222455417',
+        }),
+      });
+      if (response.ok) {
+        setDoor2Status('unlocked');
+        // Here you would typically send a command to your door hardware
+        Alert.alert('Success', 'Second door unlocked');
+
+        // Auto-lock after 5 seconds
+        setTimeout(() => {
+          setDoor2Status('locked');
+        }, 3000);
+      } else {
+        Alert.alert('Error', 'Failed to unlock the second door');
+      }
+    } catch (error) {
+      console.error('Error unlocking the first door:', error);
+      Alert.alert('Error', 'An unexpected error occurred');
+    }
+
+
   };
 
   return (
@@ -55,10 +118,10 @@ const DoorControl = () => {
         {/* Door 1 */}
         <View style={[styles.doorCard, isTablet && styles.doorCardTablet]}>
           <View style={styles.doorHeader}>
-            <Icon 
-              name={door1Status === 'locked' ? 'lock-closed' : 'lock-open'} 
-              size={isTablet ? 50 : 40} 
-              color={door1Status === 'locked' ? '#FF6B35' : '#4CAF50'} 
+            <Icon
+              name={door1Status === 'locked' ? 'lock-closed' : 'lock-open'}
+              size={isTablet ? 50 : 40}
+              color={door1Status === 'locked' ? '#FF6B35' : '#4CAF50'}
             />
             <Text style={[styles.doorTitle, isTablet && { fontSize: 24 }]}>First Door</Text>
             <Text style={[styles.doorSubtitle, isTablet && { fontSize: 15 }]}>
@@ -99,10 +162,10 @@ const DoorControl = () => {
         {/* Door 2 */}
         <View style={[styles.doorCard, isTablet && styles.doorCardTablet]}>
           <View style={styles.doorHeader}>
-            <Icon 
-              name={door2Status === 'locked' ? 'lock-closed' : 'lock-open'} 
-              size={isTablet ? 50 : 40} 
-              color={door2Status === 'locked' ? '#FF6B35' : '#4CAF50'} 
+            <Icon
+              name={door2Status === 'locked' ? 'lock-closed' : 'lock-open'}
+              size={isTablet ? 50 : 40}
+              color={door2Status === 'locked' ? '#FF6B35' : '#4CAF50'}
             />
             <Text style={[styles.doorTitle, isTablet && { fontSize: 24 }]}>Second Door</Text>
             <Text style={[styles.doorSubtitle, isTablet && { fontSize: 15 }]}>
