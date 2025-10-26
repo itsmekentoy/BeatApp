@@ -2,9 +2,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import NfcManager from 'react-native-nfc-manager';
+import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import apiConnector from '../utils/apiConnector';
 
 const steps = [
   { icon: 'person' }, // Customer Information
@@ -34,7 +34,6 @@ interface FormData {
   membershipType: string;
   dateOfRegistration: Date;
   startMembershipDate: Date | null;
-  membershipExpirationDate: Date | null;
 }
 
 const AddCustomer: React.FC = () => {
@@ -42,7 +41,7 @@ const AddCustomer: React.FC = () => {
   const { width } = useWindowDimensions();
   const isTablet = width >= 600;
   const router = useRouter();
-  
+
   // Form state
   const [formData, setFormData] = useState<FormData>({
     firstName: '',
@@ -60,37 +59,57 @@ const AddCustomer: React.FC = () => {
     membershipType: '',
     dateOfRegistration: new Date(),
     startMembershipDate: null,
-    membershipExpirationDate: null,
   });
 
   const [showDobPicker, setShowDobPicker] = useState(false);
   const [showRegistrationPicker, setShowRegistrationPicker] = useState(false);
   const [showMembershipDropdown, setShowMembershipDropdown] = useState(false);
   const [showStartMembershipPicker, setShowStartMembershipPicker] = useState(false);
-  const [showExpirationPicker, setShowExpirationPicker] = useState(false);
 
-  const membershipTypes = ['Monthly', 'Quarterly', 'Semi-Annual', 'Yearly'];
+  interface MembershipPlan {
+    id: number;
+    name: string;
+    description?: string;
+    price?: string;
+    duration_days?: number;
+    status?: number;
+    created_at?: string;
+    updated_at?: string;
+  }
 
-  // Initialize NFC Manager on component mount
+  const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>([]);
+  const [membershipLoading, setMembershipLoading] = useState(false);
+
+
+  // Load membership plans from API
   useEffect(() => {
-    const initNfc = async () => {
+    const loadPlans = async () => {
+      setMembershipLoading(true);
       try {
-        const supported = await NfcManager.isSupported();
-        if (supported) {
-          await NfcManager.start();
+        const resp = await apiConnector.request('Beat/MembershipPlans');
+        const json = await resp.json();
+
+        // API might return array directly or an object with data
+        if (Array.isArray(json)) {
+          setMembershipPlans(json as MembershipPlan[]);
+        } else if (json && json.status === 'success' && Array.isArray(json.data)) {
+          setMembershipPlans(json.data as MembershipPlan[]);
+        } else {
+          console.warn('Unexpected MembershipPlans response:', json);
         }
-      } catch (ex) {
-        console.warn('NFC initialization failed:', ex);
+      } catch (err) {
+        console.error('Failed to fetch membership plans:', err);
+      } finally {
+        setMembershipLoading(false);
       }
     };
 
-    initNfc();
-
-    // Cleanup NFC on unmount
-    return () => {
-      NfcManager.cancelTechnologyRequest().catch(() => {});
-    };
+    loadPlans();
   }, []);
+
+  // Initialize NFC Manager on component mount
+
+
 
   // Responsive styles
   const circleSize = isTablet ? 48 : 32;
@@ -138,13 +157,7 @@ const AddCustomer: React.FC = () => {
     }
   };
 
-  // Handle Membership Expiration Date change
-  const handleExpirationDateChange = (event: any, selectedDate?: Date) => {
-    setShowExpirationPicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setFormData(prev => ({ ...prev, membershipExpirationDate: selectedDate }));
-    }
-  };
+  // (expiration date removed per request)
 
   // Handle image picker - Show options
   const pickImage = async () => {
@@ -176,7 +189,7 @@ const AddCustomer: React.FC = () => {
   // Take photo with camera
   const takePhoto = async (cameraType: 'front' | 'back') => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    
+
     if (permissionResult.granted === false) {
       Alert.alert('Permission Required', 'Permission to access camera is required!');
       return;
@@ -187,8 +200,8 @@ const AddCustomer: React.FC = () => {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
-      cameraType: cameraType === 'front' 
-        ? ImagePicker.CameraType.front 
+      cameraType: cameraType === 'front'
+        ? ImagePicker.CameraType.front
         : ImagePicker.CameraType.back,
     });
 
@@ -200,7 +213,7 @@ const AddCustomer: React.FC = () => {
   // Choose from gallery
   const chooseFromGallery = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
+
     if (permissionResult.granted === false) {
       Alert.alert('Permission Required', 'Permission to access gallery is required!');
       return;
@@ -282,24 +295,99 @@ const AddCustomer: React.FC = () => {
 
   // Handle NFC Reading with Phone
   // Handle Hardware Scanner
-  const handleHardwareScan = () => {
-    // TODO: Implement hardware scanner integration
-    Alert.alert('Hardware Scanner', 'Connect your RFID hardware scanner to continue.\n\nThis will integrate with your external RFID reader device.');
+  const [hardwareLoading, setHardwareLoading] = useState(false);
+
+  const handleHardwareScan = async () => {
+    setHardwareLoading(true);
+    try {
+      // Use the project's api connector to call the Beat/getID endpoint
+      const resp = await apiConnector.request('Beat/getID');
+      const json = await resp.json();
+
+      if (json && json.status === 'success' && json.data && json.data.card_number) {
+        const card = String(json.data.card_number);
+        updateField('rfidNumber', card);
+      } else {
+        console.warn('Unexpected scanner response:', json);
+        Alert.alert('Scanner Error', 'Invalid response from scanner');
+      }
+    } catch (error: any) {
+      console.error('Hardware scanner request failed:', error);
+      Alert.alert('Scanner Error', error?.message || String(error));
+    } finally {
+      setHardwareLoading(false);
+    }
   };
 
   // Handle save
-  const handleSave = () => {
-    // TODO: Implement save functionality (e.g., save to database)
-    Alert.alert('Success', 'Customer added successfully!', [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const fd = new FormData();
+
+      // Append text fields (map to reasonable API field names)
+      fd.append('first_name', formData.firstName);
+      fd.append('middle_name', formData.middleName);
+      fd.append('last_name', formData.lastName);
+      fd.append('gender', formData.gender);
+      // Send DOB as a date string (YYYY-MM-DD)
+      fd.append('dob', formData.dob ? formData.dob.toISOString().slice(0, 10) : '');
+      fd.append('age', formData.age);
+      fd.append('address', formData.address);
+      fd.append('email', formData.email);
+      fd.append('phone_number', formData.phoneNumber);
+      fd.append('medical_condition', formData.medicalCondition);
+      fd.append('rfid_number', formData.rfidNumber);
+      // membershipType stored as string id
+      fd.append('membership_type', formData.membershipType);
+      fd.append('date_of_registration', formData.dateOfRegistration ? formData.dateOfRegistration.toISOString() : new Date().toISOString());
+      // Send start date (expiration removed)
+      fd.append('start_membership_date', formData.startMembershipDate ? formData.startMembershipDate.toISOString().slice(0, 10) : '');
+
+      // Attach profile image if present
+      if (formData.profileImage) {
+        const uri = formData.profileImage;
+        const filename = uri.split('/').pop() || `photo_${Date.now()}.jpg`;
+        const match = /\.(\w+)$/.exec(filename);
+        const ext = match ? match[1].toLowerCase() : 'jpg';
+        const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+
+        // In React Native fetch, append file as { uri, name, type }
+        // Use field name 'profile' (adjust if your backend expects a different key)
+        // Cast to any to satisfy TypeScript for FormData value
+        fd.append('profile', { uri, name: filename, type: mime } as any);
+      }
+
+      const resp = await apiConnector.request('Beat/customer/add', {
+        method: 'POST',
+        body: fd,
+        // Do NOT set Content-Type header; fetch will set the correct multipart boundary
+      });
+
+      const json = await resp.json();
+      if (json && (json.status === 'success' || json.success)) {
+        Alert.alert('Success', 'Customer added successfully!', [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+      } else {
+        console.warn('Add customer response:', json);
+        Alert.alert('Error', json.message || 'Failed to add customer');
+      }
+    } catch (error: any) {
+      console.error('Add customer failed:', error);
+      Alert.alert('Error', error?.message || String(error));
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Render Step 1: Customer Information
   const renderStep1 = () => (
     <View style={styles.stepContent}>
       <Text style={[styles.stepTitle, isTablet && { fontSize: 22 }]}>Customer Information</Text>
-      
+
       {/* Profile Image Upload */}
       <View style={styles.profileSection}>
         <TouchableOpacity style={styles.profileImageContainer} onPress={pickImage}>
@@ -507,14 +595,18 @@ const AddCustomer: React.FC = () => {
       </View>
 
       {/* Hardware Scanner Button */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.rfidButton, styles.hardwareButton, isTablet && styles.rfidButtonTablet]}
         onPress={handleHardwareScan}
       >
-        <Icon name="hardware-chip-outline" size={isTablet ? 26 : 22} color="#FFF" />
-        <Text style={[styles.rfidButtonText, isTablet && { fontSize: 16 }]}>
-          Use Hardware Scanner
-        </Text>
+        {hardwareLoading ? (
+          <ActivityIndicator size={isTablet ? 'large' : 'small'} color="#FFF" />
+        ) : (
+          <>
+            <Icon name="hardware-chip-outline" size={isTablet ? 26 : 22} color="#FFF" />
+            <Text style={[styles.rfidButtonText, isTablet && { fontSize: 16 }]}>Use Hardware Scanner</Text>
+          </>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -563,7 +655,9 @@ const AddCustomer: React.FC = () => {
             !formData.membershipType && styles.dropdownPlaceholder,
             isTablet && { fontSize: 16 }
           ]}>
-            {formData.membershipType || 'Select membership type'}
+            {membershipLoading
+              ? 'Loading...'
+              : (membershipPlans.find(p => String(p.id) === formData.membershipType)?.name || 'Select membership type')}
           </Text>
           <Icon name="chevron-down" size={20} color="#666" />
         </TouchableOpacity>
@@ -599,7 +693,7 @@ const AddCustomer: React.FC = () => {
           onPress={() => setShowStartMembershipPicker(true)}
         >
           <Text style={[styles.dateButtonText, isTablet && { fontSize: 16 }]}>
-            {formData.startMembershipDate 
+            {formData.startMembershipDate
               ? formData.startMembershipDate.toLocaleDateString()
               : 'Select start date'}
           </Text>
@@ -615,29 +709,7 @@ const AddCustomer: React.FC = () => {
         )}
       </View>
 
-      {/* Membership Expiration Date */}
-      <View style={styles.formGroup}>
-        <Text style={[styles.label, isTablet && { fontSize: 16 }]}>Expiration Date</Text>
-        <TouchableOpacity
-          style={[styles.dateButton, isTablet && styles.inputTablet]}
-          onPress={() => setShowExpirationPicker(true)}
-        >
-          <Text style={[styles.dateButtonText, isTablet && { fontSize: 16 }]}>
-            {formData.membershipExpirationDate 
-              ? formData.membershipExpirationDate.toLocaleDateString()
-              : 'Select expiration date'}
-          </Text>
-          <Icon name="calendar-outline" size={20} color="#FF6B35" />
-        </TouchableOpacity>
-        {showExpirationPicker && (
-          <DateTimePicker
-            value={formData.membershipExpirationDate || new Date()}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleExpirationDateChange}
-          />
-        )}
-      </View>
+      {/* Expiration date removed per requirement */}
 
       {/* Membership Type Dropdown Modal */}
       <Modal
@@ -661,27 +733,32 @@ const AddCustomer: React.FC = () => {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.dropdownList}>
-              {membershipTypes.map((type) => (
+              {membershipPlans.map((plan) => (
                 <TouchableOpacity
-                  key={type}
+                  key={plan.id}
                   style={[
                     styles.dropdownItem,
-                    formData.membershipType === type && styles.dropdownItemActive,
+                    formData.membershipType === String(plan.id) && styles.dropdownItemActive,
                     isTablet && styles.dropdownItemTablet
                   ]}
                   onPress={() => {
-                    updateField('membershipType', type);
+                    updateField('membershipType', String(plan.id));
                     setShowMembershipDropdown(false);
                   }}
                 >
-                  <Text style={[
-                    styles.dropdownItemText,
-                    formData.membershipType === type && styles.dropdownItemTextActive,
-                    isTablet && { fontSize: 16 }
-                  ]}>
-                    {type}
-                  </Text>
-                  {formData.membershipType === type && (
+                  <View style={{ flex: 1 }}>
+                    <Text style={[
+                      styles.dropdownItemText,
+                      formData.membershipType === String(plan.id) && styles.dropdownItemTextActive,
+                      isTablet && { fontSize: 16 }
+                    ]}>
+                      {plan.name}
+                    </Text>
+                    {plan.price && (
+                      <Text style={{ fontSize: 12, color: '#666', marginTop: 4 }}>{plan.price}</Text>
+                    )}
+                  </View>
+                  {formData.membershipType === String(plan.id) && (
                     <Icon name="checkmark" size={20} color="#FF6B35" />
                   )}
                 </TouchableOpacity>
@@ -697,7 +774,7 @@ const AddCustomer: React.FC = () => {
   const renderStep5 = () => (
     <View style={styles.stepContent}>
       <Text style={[styles.stepTitle, isTablet && { fontSize: 22 }]}>Confirmation</Text>
-      
+
       <ScrollView style={styles.confirmationContent}>
         {/* Profile Image */}
         {formData.profileImage && (
@@ -803,7 +880,7 @@ const AddCustomer: React.FC = () => {
           <View style={styles.confirmationRow}>
             <Text style={[styles.confirmationLabel, isTablet && { fontSize: 16 }]}>Type:</Text>
             <Text style={[styles.confirmationValue, isTablet && { fontSize: 16 }]}>
-              {formData.membershipType}
+              {membershipPlans.find(p => String(p.id) === formData.membershipType)?.name || formData.membershipType}
             </Text>
           </View>
           <View style={styles.confirmationRow}>
@@ -819,6 +896,7 @@ const AddCustomer: React.FC = () => {
 
   return (
     <View style={styles.container}>
+
       <Text style={[styles.title, isTablet && { fontSize: 28 }]}>Add New Customer</Text>
       <View
         style={[
@@ -848,9 +926,9 @@ const AddCustomer: React.FC = () => {
           </View>
         ))}
       </View>
-      
+
       {/* Step Content */}
-      <ScrollView 
+      <ScrollView
         style={styles.formContent}
         contentContainerStyle={[
           styles.formContentContainer,
@@ -880,7 +958,7 @@ const AddCustomer: React.FC = () => {
             {currentStep === 0 ? 'Cancel' : 'Back'}
           </Text>
         </TouchableOpacity>
-        
+
         {currentStep < steps.length - 1 ? (
           <TouchableOpacity
             style={[styles.button, isTablet && { paddingHorizontal: 48, paddingVertical: 16, borderRadius: 10 }]}
@@ -892,8 +970,13 @@ const AddCustomer: React.FC = () => {
           <TouchableOpacity
             style={[styles.button, styles.buttonSave, isTablet && { paddingHorizontal: 48, paddingVertical: 16, borderRadius: 10 }]}
             onPress={handleSave}
+            disabled={saving}
           >
-            <Text style={[styles.buttonText, isTablet && { fontSize: 18 }]}>Save</Text>
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={[styles.buttonText, isTablet && { fontSize: 18 }]}>Save</Text>
+            )}
           </TouchableOpacity>
         )}
       </View>
@@ -1315,6 +1398,23 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  // Loader overlay styles
+  loaderOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderContent: {
+    padding: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  loaderText: {
+    color: '#fff',
+    marginTop: 12,
+    fontSize: 16,
   },
 });
 

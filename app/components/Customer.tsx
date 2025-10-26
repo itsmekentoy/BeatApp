@@ -1,7 +1,8 @@
+import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import moment from 'moment';
 import React, { useEffect, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useUser } from '../context/UserContext';
 import apiConnector from '../utils/apiConnector';
@@ -11,28 +12,30 @@ const getStatusColor = (status: string) => {
     case 'Active': return '#27ae60';
     case 'Inactive': return '#e74c3c';
     case 'Expiring': return '#f39c12';
+    case 'Expired': return '#c0392b';
     case 'Freeze': return '#3498db';
     case 'Terminated': return '#7f8c8d';
     default: return '#888';
   }
 };
 
-const determineStatus = (membershipEnd: string, status: number) => {
-  const today = moment();
-  const endDate = moment(membershipEnd);
-  const daysRemaining = endDate.diff(today, 'days');
+const determineStatus = (membershipEnd: string | null, status: number) => {
+  // Prefer local date comparison to match user's expectations (avoid UTC off-by-one).
+  if (membershipEnd) {
+    const today = moment().startOf('day');
+    const endDate = moment(membershipEnd).startOf('day');
+    const daysRemaining = endDate.diff(today, 'days');
 
-  if (daysRemaining <= 7 && daysRemaining >= 0) {
-    return 'Expiring';
+    if (daysRemaining < 0) return 'Expired';
+    if (daysRemaining <= 7) return 'Expiring';
+    return 'Active';
   }
 
-  switch (status) {
-    case 0: return 'Active';
-    case 1: return 'Inactive';
-    case 2: return 'Freeze';
-    case 3: return 'Terminated';
-    default: return 'Unknown';
-  }
+  // No end date — fall back to numeric status codes.
+  if (status === 2) return 'Freeze';
+  if (status === 3) return 'Terminated';
+  if (status === 1) return 'Inactive';
+  return 'Inactive';
 };
 
 const Customer: React.FC = () => {
@@ -41,24 +44,35 @@ const Customer: React.FC = () => {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
   const { loginData } = useUser();
   const hasAddCustomerPermission = loginData?.permissions?.some(
     (p) => p.permission === '3' && p.is_granted === 1
   );
 
-  useEffect(() => {
-    const fetchCustomers = async () => {
-      try {
-        const response = await apiConnector.request('Beat/customers');
-        const data = await response.json();
-        setCustomers(data);
-      } catch (error) {
-        console.error('Error fetching customers:', error);
-      }
-    };
+  const fetchCustomers = async () => {
+    setLoading(true);
+    try {
+      const response = await apiConnector.request('Beat/customers');
+      const data = await response.json();
+      setCustomers(data);
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
+    // Fetch initially
     fetchCustomers();
   }, []);
+
+  const isFocused = useIsFocused();
+  useEffect(() => {
+    // Refetch when this screen becomes focused (so returning from AddCustomer reloads list)
+    if (isFocused) fetchCustomers();
+  }, [isFocused]);
 
   const filteredCustomers = customers.filter((customer: any) =>
     customer.firstname.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -69,7 +83,7 @@ const Customer: React.FC = () => {
     const status = determineStatus(item.membership_end, item.status);
 
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.card, isTablet && styles.cardTablet]}
         onPress={() => router.push({
           pathname: '/ViewCustomer',
@@ -118,6 +132,16 @@ const Customer: React.FC = () => {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Fullscreen loader while fetching customers */}
+      <Modal visible={loading} transparent animationType="fade">
+        <View style={styles.loaderOverlay}>
+          <View style={styles.loaderContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.loaderText}>Loading customers...</Text>
+          </View>
+        </View>
+      </Modal>
 
       <FlatList
         data={filteredCustomers}
@@ -241,6 +265,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#999',
     marginTop: 12,
+  },
+  loaderOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderContent: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  loaderText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 16,
   },
 });
 

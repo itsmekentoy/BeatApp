@@ -2,18 +2,20 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    Alert,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    useWindowDimensions,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import apiConnector from '../utils/apiConnector';
 
 interface TransactionData {
   amount: string;
@@ -42,6 +44,8 @@ const CreateTransaction: React.FC = () => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showExpirationPicker, setShowExpirationPicker] = useState(false);
   const [showPaymentMethodDropdown, setShowPaymentMethodDropdown] = useState(false);
+
+  const [saving, setSaving] = useState(false);
 
   const paymentMethods = ['Cash', 'GCash', 'PayMaya', 'Bank Transfer', 'Credit Card', 'Debit Card'];
 
@@ -84,17 +88,52 @@ const CreateTransaction: React.FC = () => {
   };
 
   // Handle save
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validateForm()) {
       return;
     }
 
-    // TODO: Implement save functionality (e.g., save to database)
-    Alert.alert(
-      'Success',
-      `Payment of ₱${parseFloat(formData.amount).toLocaleString()} recorded successfully!`,
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
+    const paramsLocal: any = params;
+    const customerId = paramsLocal.customerId;
+    if (!customerId) {
+      Alert.alert('Error', 'Missing customer id');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append('customer_id', String(customerId));
+      fd.append('amount', String(parseFloat(formData.amount)));
+      fd.append('payment_method', formData.paymentMethod);
+      // send dates as YYYY-MM-DD
+      fd.append('payment_date', formData.transactionDate ? formData.transactionDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+      if (formData.newExpirationDate) {
+        fd.append('new_expiration_date', formData.newExpirationDate.toISOString().slice(0, 10));
+      }
+      if (formData.referenceNumber) fd.append('reference_number', formData.referenceNumber);
+      if (formData.notes) fd.append('notes', formData.notes);
+
+      const resp = await apiConnector.request('Beat/customer/payment', {
+        method: 'POST',
+        body: fd,
+      });
+
+      const json = await resp.json();
+      if (json && (json.status === 'success' || json.success)) {
+        Alert.alert('Success', `Payment of ₱${parseFloat(formData.amount).toLocaleString()} recorded successfully!`, [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+      } else {
+        console.warn('Payment response:', json);
+        Alert.alert('Error', json?.message || 'Failed to record payment');
+      }
+    } catch (err: any) {
+      console.error('Failed to send payment:', err);
+      Alert.alert('Error', err?.message || 'Failed to record payment');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -207,8 +246,8 @@ const CreateTransaction: React.FC = () => {
             >
               <Icon name="calendar" size={20} color="#FF6B35" />
               <Text style={[styles.dateButtonText, isTablet && { fontSize: 16 }]}>
-                {formData.newExpirationDate 
-                  ? formData.newExpirationDate.toLocaleDateString() 
+                {formData.newExpirationDate
+                  ? formData.newExpirationDate.toLocaleDateString()
                   : 'Select new expiration date'}
               </Text>
             </TouchableOpacity>
@@ -303,9 +342,16 @@ const CreateTransaction: React.FC = () => {
         <TouchableOpacity
           style={[styles.button, styles.buttonPrimary, isTablet && styles.buttonTablet]}
           onPress={handleSave}
+          disabled={saving}
         >
-          <Icon name="checkmark-circle" size={20} color="#fff" />
-          <Text style={[styles.buttonText, isTablet && { fontSize: 18 }]}>Save Transaction</Text>
+          {saving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Icon name="checkmark-circle" size={20} color="#fff" />
+              <Text style={[styles.buttonText, isTablet && { fontSize: 18 }]}>Save Transaction</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -347,9 +393,9 @@ const CreateTransaction: React.FC = () => {
                   <Icon
                     name={
                       method === 'Cash' ? 'cash-outline' :
-                      method === 'GCash' || method === 'PayMaya' ? 'phone-portrait-outline' :
-                      method === 'Bank Transfer' ? 'business-outline' :
-                      'card-outline'
+                        method === 'GCash' || method === 'PayMaya' ? 'phone-portrait-outline' :
+                          method === 'Bank Transfer' ? 'business-outline' :
+                            'card-outline'
                     }
                     size={22}
                     color={formData.paymentMethod === method ? '#FF6B35' : '#666'}

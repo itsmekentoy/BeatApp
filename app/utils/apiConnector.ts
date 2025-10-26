@@ -32,10 +32,16 @@ class ApiConnector {
 
     const response = await fetch(url, options);
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      // Don't throw here; return the response so callers can inspect the body and present helpful messages.
+      console.warn(`Request to ${url} returned HTTP ${response.status}`);
     }
 
     return response;
+  }
+
+  // Expose base URL for building absolute asset URLs when needed
+  public getBaseUrl(): string | null {
+    return this.baseUrl;
   }
 }
 

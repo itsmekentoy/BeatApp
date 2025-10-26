@@ -42,8 +42,6 @@ const DoorControl = () => {
       });
       if (response.ok) {
         setDoor1Status('unlocked');
-        // Here you would typically send a command to your door hardware
-        Alert.alert('Success', 'First door unlocked');
 
         // Auto-lock after 5 seconds
         setTimeout(() => {
@@ -76,8 +74,7 @@ const DoorControl = () => {
       });
       if (response.ok) {
         setDoor2Status('unlocked');
-        // Here you would typically send a command to your door hardware
-        Alert.alert('Success', 'Second door unlocked');
+
 
         // Auto-lock after 5 seconds
         setTimeout(() => {

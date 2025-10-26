@@ -1,34 +1,17 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
+import moment from 'moment';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useUser } from '../context/UserContext';
+import apiConnector from '../utils/apiConnector';
 
 const isTablet = () => {
   const { width, height } = useWindowDimensions();
   return Math.min(width, height) >= 600;
 };
 
-const financialData = {
-  totalSales: 12000,
-  totalExpenses: 8000,
-  netIncome: 4000,
-};
-
-const memberStats = {
-  total: 200,
-  active: 150,
-  todayCheckins: 45,
-};
-
-const checkins = [
-  { name: 'John Doe', time: '08:30 AM' },
-  { name: 'Jane Smith', time: '09:10 AM' },
-  { name: 'Mike Lee', time: '09:45 AM' },
-];
-
-const expiringMembers = [
-  { name: 'Anna Kim', expiry: '2025-10-15' },
-  { name: 'Chris Paul', expiry: '2025-10-16' },
-];
+// Dashboard state will be populated from the backend
+type Dashboard = any;
 
 export default function Home() {
   const tablet = isTablet();
@@ -36,8 +19,97 @@ export default function Home() {
   const hasFinancialPermission = loginData?.permissions?.some(
     (p) => p.permission === '1' && p.is_granted === 1
   );
+  const isFocused = useIsFocused();
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    async function fetchDashboard() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await apiConnector.request('Beat/dashboard');
+        let body: any = null;
+        try {
+          body = await res.json();
+        } catch (e) {
+          body = null;
+        }
+        if (!mounted) return;
+        if (res.ok) {
+          setDashboard(body);
+        } else {
+          // still set body if available so UI can show partial info
+          setDashboard(body);
+          setError((body && body.message) || `Server returned ${res.status}`);
+        }
+      } catch (err: any) {
+        if (!mounted) return;
+        setError(err?.message || String(err));
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+
+    fetchDashboard();
+    return () => {
+      mounted = false;
+    };
+  }, [isFocused]);
+
+  const totalSales = dashboard?.total_sales ?? 0;
+  const totalExpenses = dashboard?.total_expenses ?? 0;
+  const netIncome = dashboard?.net_income ?? 0;
+  const totalMembers = dashboard?.total_customers ?? 0;
+  const activeMembers = dashboard?.active_members_count ?? 0;
+  const todayCheckins = dashboard?.today_checkin_count ?? 0;
+  const expiringMembers = dashboard?.expiring_memberships ?? [];
+  const latestCheckins = dashboard?.latest_checkins ?? [];
+
+  const getCustomerFullName = (c: any) => {
+    if (!c) return '—';
+    const first = c.firstname ?? c.first_name ?? '';
+    const last = c.lastname ?? c.last_name ?? '';
+    const full = `${first} ${last}`.trim();
+    return full.length ? full : '—';
+  };
+
+  const formatCheckinTime = (item: any) => {
+    // Try common fields in the payload
+    const raw = item?.check_in_time ?? item?.time ?? item?.created_at ?? item?.attendance_time ?? null;
+    if (!raw) return '—';
+
+    // If the raw value looks like HH:mm:ss (e.g., 23:06:43)
+    if (/^\d{2}:\d{2}:\d{2}$/.test(raw)) {
+      return moment(raw, 'HH:mm:ss').format('hh:mm A');
+    }
+
+    // If the raw value looks like a full ISO timestamp
+    const maybeIso = moment(raw);
+    if (maybeIso.isValid()) {
+      return maybeIso.format('hh:mm A');
+    }
+
+    // Fallback: return original
+    return String(raw);
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#FF6B35" />
+      </View>
+    );
+  }
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 24 }}>
+      {/* Error */}
+      {error && (
+        <Text style={{ color: '#c0392b', marginBottom: 8 }}>Error loading dashboard: {error}</Text>
+      )}
+
       {/* Financial Overview (permission 1) */}
       {hasFinancialPermission && (
         <>
@@ -45,15 +117,15 @@ export default function Home() {
           <View style={[styles.row, tablet && styles.rowTablet]}>
             <View style={[styles.card, tablet && styles.cardTablet]}>
               <Text style={styles.cardLabel}>Total Sales</Text>
-              <Text style={[styles.cardValue, { color: '#27ae60' }]}>₱{financialData.totalSales.toLocaleString()}</Text>
+              <Text style={[styles.cardValue, { color: '#27ae60' }]}>₱{Number(totalSales).toLocaleString()}</Text>
             </View>
             <View style={[styles.card, tablet && styles.cardTablet]}>
               <Text style={styles.cardLabel}>Total Expenses</Text>
-              <Text style={[styles.cardValue, { color: '#e74c3c' }]}>₱{financialData.totalExpenses.toLocaleString()}</Text>
+              <Text style={[styles.cardValue, { color: '#e74c3c' }]}>₱{Number(totalExpenses).toLocaleString()}</Text>
             </View>
             <View style={[styles.card, tablet && styles.cardTablet]}>
               <Text style={styles.cardLabel}>Net Income</Text>
-              <Text style={[styles.cardValue, { color: '#f39c12' }]}>₱{financialData.netIncome.toLocaleString()}</Text>
+              <Text style={[styles.cardValue, { color: '#f39c12' }]}>₱{Number(netIncome).toLocaleString()}</Text>
             </View>
           </View>
         </>
@@ -64,15 +136,15 @@ export default function Home() {
       <View style={[styles.row, tablet && styles.rowTablet]}>
         <View style={[styles.card, tablet && styles.cardTablet]}>
           <Text style={styles.cardLabel}>Total Members</Text>
-          <Text style={styles.cardValue}>{memberStats.total}</Text>
+          <Text style={styles.cardValue}>{totalMembers}</Text>
         </View>
         <View style={[styles.card, tablet && styles.cardTablet]}>
           <Text style={styles.cardLabel}>Active Members</Text>
-          <Text style={styles.cardValue}>{memberStats.active}</Text>
+          <Text style={styles.cardValue}>{activeMembers}</Text>
         </View>
         <View style={[styles.card, tablet && styles.cardTablet]}>
           <Text style={styles.cardLabel}>Today's Check-ins</Text>
-          <Text style={styles.cardValue}>{memberStats.todayCheckins}</Text>
+          <Text style={styles.cardValue}>{todayCheckins}</Text>
         </View>
       </View>
 
@@ -83,10 +155,10 @@ export default function Home() {
           <Text style={[styles.tableCell, styles.tableHeaderCell]}>Name</Text>
           <Text style={[styles.tableCell, styles.tableHeaderCell]}>Time</Text>
         </View>
-        {checkins.map((item, idx) => (
+        {latestCheckins.map((item: any, idx: number) => (
           <View style={styles.tableRow} key={idx}>
-            <Text style={styles.tableCell}>{item.name}</Text>
-            <Text style={styles.tableCell}>{item.time}</Text>
+            <Text style={styles.tableCell}>{getCustomerFullName(item?.beat_customer)}</Text>
+            <Text style={styles.tableCell}>{formatCheckinTime(item)}</Text>
           </View>
         ))}
       </View>
@@ -98,10 +170,10 @@ export default function Home() {
           <Text style={[styles.tableCell, styles.tableHeaderCell]}>Name</Text>
           <Text style={[styles.tableCell, styles.tableHeaderCell]}>Expiry</Text>
         </View>
-        {expiringMembers.map((item, idx) => (
+        {expiringMembers.map((item: any, idx: number) => (
           <View style={styles.tableRow} key={idx}>
-            <Text style={styles.tableCell}>{item.name}</Text>
-            <Text style={styles.tableCell}>{item.expiry}</Text>
+            <Text style={styles.tableCell}>{item?.beat_customer ? getCustomerFullName(item.beat_customer) : getCustomerFullName(item)}</Text>
+            <Text style={styles.tableCell}>{item?.membership_expiry_date ?? item?.membership_end ?? item?.expiry ?? '—'}</Text>
           </View>
         ))}
       </View>

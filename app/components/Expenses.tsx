@@ -31,6 +31,7 @@ const Expenses = () => {
     category: '',
     description: '',
     amount: '',
+    date: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false); // State to track submission
 
@@ -117,7 +118,7 @@ const Expenses = () => {
         const result = await response.json();
         expense.id = result.id; // Assuming the API returns the new expense ID
         setExpenses([expense, ...expenses]);
-        setNewExpense({ category: '', description: '', amount: '' });
+        setNewExpense({ category: '', description: '', amount: '', date: '' });
         setShowAddModal(false);
         Alert.alert('Success', 'Expense added successfully!');
       } else {
@@ -182,19 +183,7 @@ const Expenses = () => {
       <Text style={[styles.tableCell, isTablet && { fontSize: 15 }, isTablet ? styles.amountColumnTablet : styles.amountColumn, styles.amountText]}>
         ₱{item.amount.toLocaleString()}
       </Text>
-      {/* Action Buttons */}
-      <View style={styles.actionCell}>
-        {hasEditExpensePermission && (
-          <TouchableOpacity style={styles.actionButton}>
-            <Icon name="create-outline" size={18} color="#3498db" />
-          </TouchableOpacity>
-        )}
-        {hasDeleteExpensePermission && (
-          <TouchableOpacity style={styles.actionButton}>
-            <Icon name="trash-outline" size={18} color="#e74c3c" />
-          </TouchableOpacity>
-        )}
-      </View>
+      {/* Action Buttons removed per request */}
     </View>
   );
 
@@ -474,7 +463,6 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     backgroundColor: '#fff',
-    borderRadius: 6,
     padding: 4,
     marginHorizontal: 2,
     elevation: 1,

@@ -13,140 +13,140 @@ export default function Settings() {
     (p) => p.permission === '2' && p.is_granted === 1
   );
 
-    const SettingItem = ({ 
-      icon, 
-      title, 
-      subtitle, 
-      onPress, 
-      showArrow = true,
-      rightComponent 
-    }: { 
-      icon: string; 
-      title: string; 
-      subtitle?: string; 
-      onPress?: () => void;
-      showArrow?: boolean;
-      rightComponent?: React.ReactNode;
-    }) => (
-      <TouchableOpacity 
-        style={styles.settingItem} 
-        onPress={onPress}
-        disabled={!onPress && !rightComponent}
-      >
-        <View style={styles.settingIcon}>
-          <Icon name={icon} size={24} color="#FF6B35" />
-        </View>
-        <View style={styles.settingContent}>
-          <Text style={styles.settingTitle}>{title}</Text>
-          {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
-        </View>
-        {rightComponent || (showArrow && (
-          <Icon name="chevron-forward" size={20} color="#999" />
-        ))}
-      </TouchableOpacity>
-    );
-
-    const SettingSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        <View style={styles.sectionContent}>
-          {children}
-        </View>
+  const SettingItem = ({
+    icon,
+    title,
+    subtitle,
+    onPress,
+    showArrow = true,
+    rightComponent
+  }: {
+    icon: string;
+    title: string;
+    subtitle?: string;
+    onPress?: () => void;
+    showArrow?: boolean;
+    rightComponent?: React.ReactNode;
+  }) => (
+    <TouchableOpacity
+      style={styles.settingItem}
+      onPress={onPress}
+      disabled={!onPress && !rightComponent}
+    >
+      <View style={styles.settingIcon}>
+        <Icon name={icon} size={24} color="#FF6B35" />
       </View>
-    );
+      <View style={styles.settingContent}>
+        <Text style={styles.settingTitle}>{title}</Text>
+        {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
+      </View>
+      {rightComponent || (showArrow && (
+        <Icon name="chevron-forward" size={20} color="#999" />
+      ))}
+    </TouchableOpacity>
+  );
 
-    return (
-      <>
-        <ScrollView style={styles.container}>
-          <View style={styles.profileSection}>
-            <View style={styles.profileAvatar}>
-              <Icon name="person" size={50} color="#fff" />
-            </View>
-            <Text style={styles.profileName}>Gym Owner</Text>
-            <Text style={styles.profileEmail}>owner@gym.com</Text>
-            <TouchableOpacity style={styles.editProfileButton}>
-              <Text style={styles.editProfileText}>Edit Profile</Text>
-            </TouchableOpacity>
+  const SettingSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={styles.sectionContent}>
+        {children}
+      </View>
+    </View>
+  );
+
+  return (
+    <>
+      <ScrollView style={styles.container}>
+        <View style={styles.profileSection}>
+          <View style={styles.profileAvatar}>
+            <Icon name="person" size={50} color="#fff" />
           </View>
+          <Text style={styles.profileName}>Gym Owner</Text>
+          <Text style={styles.profileEmail}>owner@gym.com</Text>
+          <TouchableOpacity style={styles.editProfileButton}>
+            <Text style={styles.editProfileText}>Edit Profile</Text>
+          </TouchableOpacity>
+        </View>
 
-          <SettingSection title="Gym Settings">
+        <SettingSection title="Gym Settings">
+          <SettingItem
+            icon="cube"
+            title="Products"
+            subtitle="Manage inventory and product details"
+            onPress={() => setIsProductsModalVisible(true)}
+          />
+          {hasMembershipPermission && (
             <SettingItem
-              icon="cube"
-              title="Products"
-              subtitle="Manage inventory and product details"
-              onPress={() => setIsProductsModalVisible(true)}
+              icon="pricetag"
+              title="Membership Plan"
+              subtitle="Manage subscription plans and pricing"
+              onPress={() => router.push('/Membership')}
             />
-            {hasMembershipPermission && (
-              <SettingItem
-                icon="pricetag"
-                title="Membership Plan"
-                subtitle="Manage subscription plans and pricing"
-                onPress={() => router.push('/Membership')}
-              />
-            )}
-            {loginData?.permissions?.some((p) => p.permission === '11' && p.is_granted === 1) && (
-              <SettingItem
-                icon="mail"
-                title="Email Setting"
-                subtitle="Configure email notifications and alerts"
-                onPress={() => router.push('/EmailConfig')}
-              />
-            )}
-          </SettingSection>
-
-          {loginData?.permissions?.some((p) => p.permission === '10' && p.is_granted === 1) && (
-            <SettingSection title="User Management">
-              <SettingItem
-                icon="people"
-                title="User Management"
-                subtitle="Manage staff accounts and permissions"
-                onPress={() => router.push('/UserManagement')}
-              />
-            </SettingSection>
           )}
-
-          <SettingSection title="About">
+          {loginData?.permissions?.some((p) => p.permission === '11' && p.is_granted === 1) && (
             <SettingItem
-              icon="information-circle"
-              title="About App"
-              subtitle="Developer and Version Info"
-              onPress={() => {}}
+              icon="mail"
+              title="Email Setting"
+              subtitle="Configure email notifications and alerts"
+              onPress={() => router.push('/EmailConfig')}
+            />
+          )}
+        </SettingSection>
+
+        {loginData?.permissions?.some((p) => p.permission === '10' && p.is_granted === 1) && (
+          <SettingSection title="User Management">
+            <SettingItem
+              icon="people"
+              title="User Management"
+              subtitle="Manage staff accounts and permissions"
+              onPress={() => router.push('/UserManagement')}
             />
           </SettingSection>
+        )}
 
-          <View style={styles.logoutSection}>
-            <TouchableOpacity style={styles.logoutButton}>
-              <Icon name="log-out" size={24} color="#fff" />
-              <Text style={styles.logoutText}>Logout</Text>
+        <SettingSection title="About">
+          <SettingItem
+            icon="information-circle"
+            title="About App"
+            subtitle="Developer and Version Info"
+            onPress={() => { }}
+          />
+        </SettingSection>
+
+        <View style={styles.logoutSection}>
+          <TouchableOpacity style={styles.logoutButton}>
+            <Icon name="log-out" size={24} color="#fff" />
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>BeatFitNess</Text>
+          <Text style={styles.footerText}>Developed by Kent Cortiguerra</Text>
+          <Text style={styles.footerText}>Version 1.0.0</Text>
+          <Text style={styles.footerText}>© 2024 All Rights Reserved</Text>
+        </View>
+      </ScrollView>
+
+      {/* Products Modal */}
+      <Modal
+        visible={isProductsModalVisible}
+        animationType="slide"
+        onRequestClose={() => setIsProductsModalVisible(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setIsProductsModalVisible(false)}>
+              <Icon name="close" size={28} color="#333" />
             </TouchableOpacity>
+            <Text style={styles.modalTitle}>Products Management</Text>
+            <View style={{ width: 28 }} />
           </View>
-
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Gym Management System</Text>
-            <Text style={styles.footerText}>Developed by Kent Cortieguerra</Text>
-            <Text style={styles.footerText}>Version 1.0.0</Text>
-            <Text style={styles.footerText}>© 2024 All Rights Reserved</Text>
-          </View>
-        </ScrollView>
-
-        {/* Products Modal */}
-        <Modal
-          visible={isProductsModalVisible}
-          animationType="slide"
-          onRequestClose={() => setIsProductsModalVisible(false)}
-        >
-          <View style={{ flex: 1 }}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setIsProductsModalVisible(false)}>
-                <Icon name="close" size={28} color="#333" />
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>Products Management</Text>
-              <View style={{ width: 28 }} />
-            </View>
-            <Products />
-          </View>
-        </Modal>
-      </>
+          <Products />
+        </View>
+      </Modal>
+    </>
   );
 }
 

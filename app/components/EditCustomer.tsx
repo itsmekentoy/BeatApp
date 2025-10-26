@@ -2,9 +2,11 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import NfcManager from 'react-native-nfc-manager';
 import Icon from 'react-native-vector-icons/Ionicons';
+import apiConnector from '../utils/apiConnector';
+import connection from '../utils/connection';
 
 const steps = [
   { icon: 'person' }, // Customer Information
@@ -34,7 +36,6 @@ interface FormData {
   membershipType: string;
   dateOfRegistration: Date;
   startMembershipDate: Date | null;
-  membershipExpirationDate: Date | null;
 }
 
 const EditCustomer: React.FC = () => {
@@ -43,37 +44,48 @@ const EditCustomer: React.FC = () => {
   const isTablet = width >= 600;
   const router = useRouter();
   const params = useLocalSearchParams();
-  
-  // Mock customer data - In production, fetch from database using params.customerId
-  const mockCustomerData: FormData = {
-    firstName: 'John',
-    middleName: 'Michael',
-    lastName: 'Doe',
-    gender: 'Male',
-    dob: new Date('1990-05-15'),
-    age: '35',
-    address: '123 Main Street, San Jose, Quezon City, NCR 1100',
-    email: 'john.doe@email.com',
-    phoneNumber: '+63 912 345 6789',
-    profileImage: null,
-    medicalCondition: 'No major health issues. Has mild hypertension, currently managed with medication.',
-    rfidNumber: 'RFID-001234567890',
-    membershipType: 'Monthly',
-    dateOfRegistration: new Date('2025-01-15'),
-    startMembershipDate: new Date('2025-01-15'),
-    membershipExpirationDate: new Date('2025-02-15'),
-  };
 
-  // Form state - Initialize with customer data
-  const [formData, setFormData] = useState<FormData>(mockCustomerData);
+  // Loading state for fetching customer to edit
+  const [loadingCustomer, setLoadingCustomer] = useState<boolean>(true);
+
+  // Form state - initialize with empty/default values (avoid showing placeholder mock data)
+  const [formData, setFormData] = useState<FormData>({
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    gender: '',
+    dob: null,
+    age: '',
+    address: '',
+    email: '',
+    phoneNumber: '',
+    profileImage: null,
+    medicalCondition: '',
+    rfidNumber: '',
+    membershipType: '',
+    dateOfRegistration: new Date(),
+    startMembershipDate: null,
+  });
 
   const [showDobPicker, setShowDobPicker] = useState(false);
   const [showRegistrationPicker, setShowRegistrationPicker] = useState(false);
   const [showMembershipDropdown, setShowMembershipDropdown] = useState(false);
   const [showStartMembershipPicker, setShowStartMembershipPicker] = useState(false);
-  const [showExpirationPicker, setShowExpirationPicker] = useState(false);
+  const [hardwareLoading, setHardwareLoading] = useState(false);
 
-  const membershipTypes = ['Monthly', 'Quarterly', 'Semi-Annual', 'Yearly'];
+  interface MembershipPlan {
+    id: number;
+    name: string;
+    description?: string;
+    price?: string;
+    duration_days?: number;
+    status?: number;
+    created_at?: string;
+    updated_at?: string;
+  }
+
+  const [membershipPlans, setMembershipPlans] = useState<MembershipPlan[]>([]);
+  const [membershipLoading, setMembershipLoading] = useState(false);
 
   // Responsive styles
   const circleSize = isTablet ? 48 : 32;
@@ -99,16 +111,98 @@ const EditCustomer: React.FC = () => {
 
     // Cleanup NFC on unmount
     return () => {
-      NfcManager.cancelTechnologyRequest().catch(() => {});
+      NfcManager.cancelTechnologyRequest().catch(() => { });
     };
   }, []);
 
   // Load customer data on mount (in production, fetch from API)
   useEffect(() => {
-    // TODO: Fetch customer data based on params.customerId
-    // const customerData = await fetchCustomerById(params.customerId);
-    // setFormData(customerData);
+    const loadCustomer = async () => {
+      setLoadingCustomer(true);
+      try {
+        const id = (params as any).customerId;
+        if (!id) {
+          setLoadingCustomer(false);
+          return;
+        }
+        const resp = await apiConnector.request(`Beat/customer/${id}`);
+        const json = await resp.json();
+        const obj = json && json.data ? json.data : json;
+
+        // Map API response to local FormData shape with safe fallbacks
+        const dobValue = obj?.birthdate || obj?.dob || null;
+        const dobDate = dobValue ? new Date(dobValue) : null;
+
+        // Build profile image URL robustly using available base URLs
+        const profilePath = obj?.profile_picture;
+        const serverBase = (apiConnector.getBaseUrl() || connection.BASE_URL || '').replace(/\/api.*$/i, '');
+
+        const mapped: FormData = {
+          firstName: obj?.firstname || obj?.first_name || '',
+          middleName: obj?.middlename || obj?.middle_name || '',
+          lastName: obj?.lastname || obj?.last_name || '',
+          // API: 0 => Female, 1 => Male (per sample)
+          gender: typeof obj?.gender !== 'undefined'
+            ? (Number(obj.gender) === 0 ? 'Female' : 'Male')
+            : (obj?.gender === 'Male' || obj?.gender === 'Female' ? obj.gender : ''),
+          dob: dobDate,
+          age: obj?.age ? String(obj.age) : (dobDate ? calculateAge(dobDate) : ''),
+          address: obj?.address || '',
+          email: obj?.email || '',
+          phoneNumber: obj?.phone || obj?.phone_number || '',
+          profileImage: profilePath
+            ? (
+              typeof profilePath === 'string' && profilePath.startsWith('http')
+                ? profilePath
+                : (profilePath.startsWith('/') ? `${serverBase}${profilePath}` : `${serverBase}/storage/${profilePath}`)
+            )
+            : null,
+          medicalCondition: obj?.medical_condition || obj?.medical_history || '',
+          // RFID number is provided in `keypab` per sample response
+          rfidNumber: obj?.keypab || obj?.rfid_number || obj?.rfid || obj?.card_number || '',
+          membershipType: obj?.membership_type?.id ? String(obj.membership_type.id) : (obj?.membership_type?.name || (obj?.membership_id ? String(obj.membership_id) : '')),
+          dateOfRegistration: obj?.created_at ? new Date(obj.created_at) : (obj?.date_of_registration ? new Date(obj.date_of_registration) : new Date()),
+          startMembershipDate: obj?.membership_start ? new Date(obj.membership_start) : (obj?.start_membership_date ? new Date(obj.start_membership_date) : null),
+        };
+        console.log(`http://localhost${obj.profile_picture}`);
+        setFormData(prev => ({ ...prev, ...mapped }));
+      } catch (err) {
+        console.error('Failed to load customer for editing:', err);
+        Alert.alert('Error', 'Failed to load customer details for editing.');
+      } finally {
+        setLoadingCustomer(false);
+      }
+    };
+
+    loadCustomer();
   }, [params.customerId]);
+
+  // Load membership plans (used to display membership type names)
+  useEffect(() => {
+    const loadPlans = async () => {
+      setMembershipLoading(true);
+      try {
+        const resp = await apiConnector.request('Beat/MembershipPlans');
+        const json = await resp.json();
+
+        if (Array.isArray(json)) {
+          setMembershipPlans(json as MembershipPlan[]);
+        } else if (json && Array.isArray(json.data)) {
+          setMembershipPlans(json.data as MembershipPlan[]);
+        } else if (json && json.status === 'success' && Array.isArray(json.data)) {
+          setMembershipPlans(json.data as MembershipPlan[]);
+        } else {
+          console.warn('Unexpected MembershipPlans response:', json);
+        }
+      } catch (err) {
+        console.error('Failed to fetch membership plans:', err);
+      } finally {
+        setMembershipLoading(false);
+      }
+    };
+
+    loadPlans();
+  }, []);
 
   // Calculate age from DOB
   const calculateAge = (birthDate: Date) => {
@@ -149,13 +243,7 @@ const EditCustomer: React.FC = () => {
     }
   };
 
-  // Handle Membership Expiration Date change
-  const handleExpirationDateChange = (event: any, selectedDate?: Date) => {
-    setShowExpirationPicker(Platform.OS === 'ios');
-    if (selectedDate) {
-      setFormData(prev => ({ ...prev, membershipExpirationDate: selectedDate }));
-    }
-  };
+  // (expiration date removed per request)
 
   // Handle image picker - Show options
   const pickImage = async () => {
@@ -187,7 +275,7 @@ const EditCustomer: React.FC = () => {
   // Take photo with camera
   const takePhoto = async (cameraType: 'front' | 'back') => {
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    
+
     if (permissionResult.granted === false) {
       Alert.alert('Permission Required', 'Permission to access camera is required!');
       return;
@@ -198,8 +286,8 @@ const EditCustomer: React.FC = () => {
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
-      cameraType: cameraType === 'front' 
-        ? ImagePicker.CameraType.front 
+      cameraType: cameraType === 'front'
+        ? ImagePicker.CameraType.front
         : ImagePicker.CameraType.back,
     });
 
@@ -211,7 +299,7 @@ const EditCustomer: React.FC = () => {
   // Choose from gallery
   const chooseFromGallery = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
+
     if (permissionResult.granted === false) {
       Alert.alert('Permission Required', 'Permission to access gallery is required!');
       return;
@@ -294,38 +382,106 @@ const EditCustomer: React.FC = () => {
 
   // Handle NFC Reading with Phone
   // Handle Hardware Scanner
-  const handleHardwareScan = () => {
-    // TODO: Implement hardware scanner integration
-    Alert.alert('Hardware Scanner', 'Connect your RFID hardware scanner to continue.\n\nThis will integrate with your external RFID reader device.');
+  const handleHardwareScan = async () => {
+    setHardwareLoading(true);
+    try {
+      // Use the project's api connector to call the Beat/getID endpoint
+      const resp = await apiConnector.request('Beat/getID');
+      const json = await resp.json();
+
+      if (json && (json.status === 'success' || json.success) && json.data && (json.data.card_number || json.data.card)) {
+        const card = String(json.data.card_number || json.data.card);
+        updateField('rfidNumber', card);
+      } else if (json && json.data && json.data.card_number) {
+        const card = String(json.data.card_number);
+        updateField('rfidNumber', card);
+      } else {
+        console.warn('Unexpected scanner response:', json);
+        Alert.alert('Scanner Error', 'Invalid response from scanner');
+      }
+    } catch (error: any) {
+      console.error('Hardware scanner request failed:', error);
+      Alert.alert('Scanner Error', error?.message || String(error));
+    } finally {
+      setHardwareLoading(false);
+    }
   };
 
   // Handle update
-  const handleUpdate = () => {
-    // TODO: Implement update functionality (e.g., update database)
-    Alert.alert('Success', 'Customer information updated successfully!', [
-      { text: 'OK', onPress: () => router.back() }
-    ]);
+  const [saving, setSaving] = useState(false);
+
+  const handleUpdate = async () => {
+    setSaving(true);
+    try {
+      const id = (params as any).customerId;
+      if (!id) {
+        Alert.alert('Error', 'Customer ID is missing');
+        return;
+      }
+
+      const fd = new FormData();
+
+      // Map fields to backend expected names (similar to AddCustomer)
+      fd.append('first_name', formData.firstName);
+      fd.append('middle_name', formData.middleName);
+      fd.append('last_name', formData.lastName);
+      // Send gender as 0/1 - backend expects numeric; we map Female -> 0, Male -> 1
+      const genderValue = formData.gender === 'Female' ? '0' : (formData.gender === 'Male' ? '1' : '');
+      fd.append('gender', genderValue);
+      fd.append('dob', formData.dob ? formData.dob.toISOString().slice(0, 10) : '');
+      fd.append('age', formData.age);
+      fd.append('address', formData.address);
+      fd.append('email', formData.email);
+      fd.append('phone_number', formData.phoneNumber);
+      fd.append('medical_condition', formData.medicalCondition);
+      // rfid/keypab
+      fd.append('rfid_number', formData.rfidNumber || '');
+      // membership type id
+      fd.append('membership_type', formData.membershipType);
+      fd.append('date_of_registration', formData.dateOfRegistration ? formData.dateOfRegistration.toISOString() : new Date().toISOString());
+      fd.append('start_membership_date', formData.startMembershipDate ? formData.startMembershipDate.toISOString().slice(0, 10) : '');
+
+      // Do NOT append/allow updating profile image from Edit screen (image is fixed)
+
+      const resp = await apiConnector.request(`Beat/customer/update/${id}`, {
+        method: 'POST',
+        body: fd,
+      });
+
+      const json = await resp.json();
+      if (json && (json.status === 'success' || json.success)) {
+        Alert.alert('Success', 'Customer information updated successfully!', [
+          { text: 'OK', onPress: () => router.replace({ pathname: '/ViewCustomer', params: { id } }) }
+        ]);
+      } else {
+        console.warn('Update customer response:', json);
+        Alert.alert('Error', json.message || 'Failed to update customer');
+      }
+    } catch (error: any) {
+      console.error('Update customer failed:', error);
+      Alert.alert('Error', error?.message || String(error));
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Render Step 1: Personal Information
   const renderStep1 = () => (
     <View style={styles.stepContent}>
       <Text style={[styles.stepTitle, isTablet && { fontSize: 22 }]}>Personal Information</Text>
-      
-      {/* Profile Image Upload */}
+
+      {/* Profile Image (fixed, not editable in Edit screen) */}
       <View style={styles.profileSection}>
-        <TouchableOpacity style={styles.profileImageContainer} onPress={pickImage}>
+        <View style={styles.profileImageContainer}>
           {formData.profileImage ? (
             <Image source={{ uri: formData.profileImage }} style={styles.profileImage} />
           ) : (
             <View style={styles.profilePlaceholder}>
-              <Icon name="camera" size={isTablet ? 48 : 40} color="#ccc" />
-              <Text style={[styles.profilePlaceholderText, isTablet && { fontSize: 16 }]}>
-                Upload Profile
-              </Text>
+              <Icon name="person" size={isTablet ? 48 : 40} color="#ccc" />
             </View>
           )}
-        </TouchableOpacity>
+        </View>
+        <Text style={[styles.profileNote, isTablet && { fontSize: 14 }]}>Profile photo cannot be changed here</Text>
       </View>
 
       {/* Name Fields */}
@@ -519,14 +675,19 @@ const EditCustomer: React.FC = () => {
       </View>
 
       {/* Hardware Scanner Button */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.rfidButton, styles.hardwareButton, isTablet && styles.rfidButtonTablet]}
         onPress={handleHardwareScan}
+        disabled={hardwareLoading}
       >
-        <Icon name="hardware-chip-outline" size={isTablet ? 26 : 22} color="#FFF" />
-        <Text style={[styles.rfidButtonText, isTablet && { fontSize: 16 }]}>
-          Use Hardware Scanner
-        </Text>
+        {hardwareLoading ? (
+          <ActivityIndicator size={isTablet ? 'large' : 'small'} color="#FFF" />
+        ) : (
+          <>
+            <Icon name="hardware-chip-outline" size={isTablet ? 26 : 22} color="#FFF" />
+            <Text style={[styles.rfidButtonText, isTablet && { fontSize: 16 }]}>Use Hardware Scanner</Text>
+          </>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -575,7 +736,9 @@ const EditCustomer: React.FC = () => {
             !formData.membershipType && styles.dropdownPlaceholder,
             isTablet && { fontSize: 16 }
           ]}>
-            {formData.membershipType || 'Select membership type'}
+            {membershipLoading
+              ? 'Loading...'
+              : (membershipPlans.find(p => String(p.id) === formData.membershipType)?.name || 'Select membership type')}
           </Text>
           <Icon name="chevron-down" size={20} color="#666" />
         </TouchableOpacity>
@@ -611,7 +774,7 @@ const EditCustomer: React.FC = () => {
           onPress={() => setShowStartMembershipPicker(true)}
         >
           <Text style={[styles.dateButtonText, isTablet && { fontSize: 16 }]}>
-            {formData.startMembershipDate 
+            {formData.startMembershipDate
               ? formData.startMembershipDate.toLocaleDateString()
               : 'Select start date'}
           </Text>
@@ -627,29 +790,7 @@ const EditCustomer: React.FC = () => {
         )}
       </View>
 
-      {/* Membership Expiration Date */}
-      <View style={styles.formGroup}>
-        <Text style={[styles.label, isTablet && { fontSize: 16 }]}>Expiration Date</Text>
-        <TouchableOpacity
-          style={[styles.dateButton, isTablet && styles.inputTablet]}
-          onPress={() => setShowExpirationPicker(true)}
-        >
-          <Text style={[styles.dateButtonText, isTablet && { fontSize: 16 }]}>
-            {formData.membershipExpirationDate 
-              ? formData.membershipExpirationDate.toLocaleDateString()
-              : 'Select expiration date'}
-          </Text>
-          <Icon name="calendar-outline" size={20} color="#FF6B35" />
-        </TouchableOpacity>
-        {showExpirationPicker && (
-          <DateTimePicker
-            value={formData.membershipExpirationDate || new Date()}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleExpirationDateChange}
-          />
-        )}
-      </View>
+      {/* Expiration date removed per requirement */}
 
       {/* Membership Type Dropdown Modal */}
       <Modal
@@ -673,27 +814,32 @@ const EditCustomer: React.FC = () => {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.dropdownList}>
-              {membershipTypes.map((type) => (
+              {membershipPlans.map((plan) => (
                 <TouchableOpacity
-                  key={type}
+                  key={plan.id}
                   style={[
                     styles.dropdownItem,
-                    formData.membershipType === type && styles.dropdownItemActive,
+                    formData.membershipType === String(plan.id) && styles.dropdownItemActive,
                     isTablet && styles.dropdownItemTablet
                   ]}
                   onPress={() => {
-                    updateField('membershipType', type);
+                    updateField('membershipType', String(plan.id));
                     setShowMembershipDropdown(false);
                   }}
                 >
-                  <Text style={[
-                    styles.dropdownItemText,
-                    formData.membershipType === type && styles.dropdownItemTextActive,
-                    isTablet && { fontSize: 16 }
-                  ]}>
-                    {type}
-                  </Text>
-                  {formData.membershipType === type && (
+                  <View style={{ flex: 1 }}>
+                    <Text style={[
+                      styles.dropdownItemText,
+                      formData.membershipType === String(plan.id) && styles.dropdownItemTextActive,
+                      isTablet && { fontSize: 16 }
+                    ]}>
+                      {plan.name}
+                    </Text>
+                    {plan.price && (
+                      <Text style={{ fontSize: 12, color: '#666', marginTop: 4 }}>{plan.price}</Text>
+                    )}
+                  </View>
+                  {formData.membershipType === String(plan.id) && (
                     <Icon name="checkmark" size={20} color="#FF6B35" />
                   )}
                 </TouchableOpacity>
@@ -709,7 +855,7 @@ const EditCustomer: React.FC = () => {
   const renderStep5 = () => (
     <View style={styles.stepContent}>
       <Text style={[styles.stepTitle, isTablet && { fontSize: 22 }]}>Confirm Changes</Text>
-      
+
       <ScrollView style={styles.confirmationContent}>
         {/* Profile Image */}
         {formData.profileImage && (
@@ -815,7 +961,7 @@ const EditCustomer: React.FC = () => {
           <View style={styles.confirmationRow}>
             <Text style={[styles.confirmationLabel, isTablet && { fontSize: 16 }]}>Type:</Text>
             <Text style={[styles.confirmationValue, isTablet && { fontSize: 16 }]}>
-              {formData.membershipType}
+              {membershipPlans.find(p => String(p.id) === formData.membershipType)?.name || formData.membershipType}
             </Text>
           </View>
           <View style={styles.confirmationRow}>
@@ -832,6 +978,15 @@ const EditCustomer: React.FC = () => {
   return (
     <View style={styles.container}>
       <Text style={[styles.title, isTablet && { fontSize: 28 }]}>Edit Customer</Text>
+      {/* Loader while fetching customer data for editing */}
+      <Modal visible={loadingCustomer} transparent animationType="fade">
+        <View style={styles.loaderOverlay}>
+          <View style={styles.loaderContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.loaderText}>Loading customer...</Text>
+          </View>
+        </View>
+      </Modal>
       <View
         style={[
           styles.stepper,
@@ -860,9 +1015,9 @@ const EditCustomer: React.FC = () => {
           </View>
         ))}
       </View>
-      
+
       {/* Step Content */}
-      <ScrollView 
+      <ScrollView
         style={styles.formContent}
         contentContainerStyle={[
           styles.formContentContainer,
@@ -892,7 +1047,7 @@ const EditCustomer: React.FC = () => {
             {currentStep === 0 ? 'Cancel' : 'Back'}
           </Text>
         </TouchableOpacity>
-        
+
         {currentStep < steps.length - 1 ? (
           <TouchableOpacity
             style={[styles.button, isTablet && { paddingHorizontal: 48, paddingVertical: 16, borderRadius: 10 }]}
@@ -904,8 +1059,13 @@ const EditCustomer: React.FC = () => {
           <TouchableOpacity
             style={[styles.button, styles.buttonSave, isTablet && { paddingHorizontal: 48, paddingVertical: 16, borderRadius: 10 }]}
             onPress={handleUpdate}
+            disabled={saving}
           >
-            <Text style={[styles.buttonText, isTablet && { fontSize: 18 }]}>Update</Text>
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={[styles.buttonText, isTablet && { fontSize: 18 }]}>Update</Text>
+            )}
           </TouchableOpacity>
         )}
       </View>
@@ -1002,6 +1162,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 14,
     color: '#999',
+  },
+  profileNote: {
+    marginTop: 8,
+    color: '#666',
+    fontSize: 12,
+    alignSelf: 'center',
   },
   formRow: {
     flexDirection: 'column',
@@ -1304,6 +1470,24 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  // Loader overlay (used when fetching customer data)
+  loaderOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderContent: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  loaderText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 16,
   },
 });
 
