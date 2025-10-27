@@ -1,7 +1,6 @@
-import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Image, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import apiConnector from './utils/apiConnector';
 
@@ -13,48 +12,35 @@ const EmailConfig = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [logoUri, setLogoUri] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
 
   React.useEffect(() => {
     const fetchEmailConfig = async () => {
+      setLoadingMessage('Loading email configuration...');
+      setLoading(true);
       try {
         const response = await apiConnector.request('Beat/email-management');
         if (response.ok) {
           const data = await response.json();
           setEmail(data.email);
           setPassword(data.password);
-          setLogoUri(data.filepath);
         } else {
           Alert.alert('Error', 'Failed to fetch email configuration');
         }
       } catch (error) {
         console.error('Error fetching email configuration:', error);
         Alert.alert('Error', 'An unexpected error occurred');
+      } finally {
+        setLoading(false);
+        setLoadingMessage(null);
       }
     };
 
     fetchEmailConfig();
   }, []);
 
-  const pickLogo = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    
-    if (permissionResult.granted === false) {
-      Alert.alert('Permission Required', 'Permission to access gallery is required!');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
-
-    if (!result.canceled) {
-      setLogoUri(result.assets[0].uri);
-    }
-  };
+  // Email Logo upload removed as per request
 
   const handleSave = async () => {
     if (!email.trim() || !password.trim()) {
@@ -72,21 +58,14 @@ const EmailConfig = () => {
     const formData = new FormData();
     formData.append('email', email);
     formData.append('password', password);
-    if (logoUri) {
-      formData.append('filepath', {
-        uri: logoUri,
-        name: 'logo.jpg',
-        type: 'image/jpeg',
-      });
-    }
 
     try {
+      setLoadingMessage('Saving email configuration...');
+      setLoading(true);
+
       const response = await apiConnector.request('Beat/email-management/create-or-update', {
         method: 'POST',
         body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
       });
 
       if (response.ok) {
@@ -100,6 +79,9 @@ const EmailConfig = () => {
     } catch (error) {
       console.error('Error updating email configuration:', error);
       Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
+      setLoadingMessage(null);
     }
   };
 
@@ -119,40 +101,10 @@ const EmailConfig = () => {
         </View>
 
         <View style={styles.formContainer}>
-          {/* Logo Section */}
-          <View style={styles.logoSection}>
-            <Text style={styles.sectionTitle}>Email Logo</Text>
-            <Text style={styles.sectionSubtitle}>Upload a logo to appear in email notifications</Text>
-            
-            <TouchableOpacity
-              style={styles.logoContainer}
-              onPress={pickLogo}
-            >
-              {logoUri ? (
-                <Image source={{ uri: logoUri }} style={styles.logoImage} />
-              ) : (
-                <View style={styles.logoPlaceholder}>
-                  <Icon name="image-outline" size={50} color="#999" />
-                  <Text style={styles.logoPlaceholderText}>Tap to upload logo</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            {logoUri && (
-              <TouchableOpacity
-                style={styles.removeLogoButton}
-                onPress={() => setLogoUri(null)}
-              >
-                <Icon name="trash-outline" size={18} color="#FF3B30" />
-                <Text style={styles.removeLogoText}>Remove Logo</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
           {/* Email Settings */}
           <View style={styles.settingsSection}>
             <Text style={styles.sectionTitle}>SMTP Settings</Text>
-            
+
             <View style={styles.formGroup}>
               <Text style={styles.label}>Email Address *</Text>
               <View style={styles.inputContainer}>
@@ -205,7 +157,7 @@ const EmailConfig = () => {
             <View style={styles.infoContent}>
               <Text style={styles.infoTitle}>Email Configuration</Text>
               <Text style={styles.infoText}>
-                This email will be used to send notifications about new memberships, 
+                This email will be used to send notifications about new memberships,
                 renewals, and other important updates to your customers.
               </Text>
             </View>
@@ -223,6 +175,16 @@ const EmailConfig = () => {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Fullscreen loader modal */}
+      <Modal visible={loading} transparent animationType="fade">
+        <View style={styles.loaderOverlay}>
+          <View style={styles.loaderContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.loaderText}>{loadingMessage || 'Please wait...'}</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -407,6 +369,23 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  loaderOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderContent: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  loaderText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 16,
   },
 });
 

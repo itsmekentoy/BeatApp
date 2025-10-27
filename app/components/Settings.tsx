@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useUser } from '../context/UserContext';
 import Products from './Products';
@@ -8,7 +8,7 @@ import Products from './Products';
 export default function Settings() {
   const router = useRouter();
   const [isProductsModalVisible, setIsProductsModalVisible] = useState(false);
-  const { loginData } = useUser();
+  const { loginData, setLoginData } = useUser();
   const hasMembershipPermission = loginData?.permissions?.some(
     (p) => p.permission === '2' && p.is_granted === 1
   );
@@ -55,6 +55,26 @@ export default function Settings() {
     </View>
   );
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: () => {
+            // Clear user context and navigate to Login
+            (setLoginData as any)(null);
+            router.replace('/Login');
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
   return (
     <>
       <ScrollView style={styles.container}>
@@ -62,11 +82,8 @@ export default function Settings() {
           <View style={styles.profileAvatar}>
             <Icon name="person" size={50} color="#fff" />
           </View>
-          <Text style={styles.profileName}>Gym Owner</Text>
-          <Text style={styles.profileEmail}>owner@gym.com</Text>
-          <TouchableOpacity style={styles.editProfileButton}>
-            <Text style={styles.editProfileText}>Edit Profile</Text>
-          </TouchableOpacity>
+          <Text style={styles.profileName}>{loginData?.user?.name || 'Gym Owner'}</Text>
+          <Text style={styles.profileEmail}>{loginData?.user?.email || 'owner@gym.com'}</Text>
         </View>
 
         <SettingSection title="Gym Settings">
@@ -105,17 +122,10 @@ export default function Settings() {
           </SettingSection>
         )}
 
-        <SettingSection title="About">
-          <SettingItem
-            icon="information-circle"
-            title="About App"
-            subtitle="Developer and Version Info"
-            onPress={() => { }}
-          />
-        </SettingSection>
+        {/* About section removed per user request */}
 
         <View style={styles.logoutSection}>
-          <TouchableOpacity style={styles.logoutButton}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Icon name="log-out" size={24} color="#fff" />
             <Text style={styles.logoutText}>Logout</Text>
           </TouchableOpacity>

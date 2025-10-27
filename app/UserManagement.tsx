@@ -1,7 +1,7 @@
 import apiConnector from '@/app/utils/apiConnector';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 interface Permission {
@@ -33,6 +33,8 @@ const UserManagement = () => {
   const router = useRouter();
 
   const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -60,6 +62,8 @@ const UserManagement = () => {
   });
 
   const fetchUsers = React.useCallback(async () => {
+    setLoadingMessage('Loading users...');
+    setLoading(true);
     try {
       const response = await apiConnector.request('Beat/users');
       if (response.ok) {
@@ -115,6 +119,9 @@ const UserManagement = () => {
     } catch (error) {
       console.error('Error fetching users:', error);
       Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
+      setLoadingMessage(null);
     }
   }, []);
 
@@ -140,6 +147,8 @@ const UserManagement = () => {
     }));
 
     try {
+      setLoadingMessage('Adding user...');
+      setLoading(true);
       const response = await apiConnector.request('Beat/users/add', {
         method: 'POST',
         headers: {
@@ -167,6 +176,9 @@ const UserManagement = () => {
     } catch (error) {
       console.error('Error adding user:', error);
       Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
+      setLoadingMessage(null);
     }
   };
 
@@ -199,6 +211,8 @@ const UserManagement = () => {
     }
 
     try {
+      setLoadingMessage('Updating user...');
+      setLoading(true);
       const response = await apiConnector.request(`Beat/users/update/${selectedUser.id}`, {
         method: 'POST',
         headers: {
@@ -220,6 +234,9 @@ const UserManagement = () => {
     } catch (error) {
       console.error('Error updating user:', error);
       Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
+      setLoadingMessage(null);
     }
   };
 
@@ -308,6 +325,8 @@ const UserManagement = () => {
           style: 'destructive',
           onPress: async () => {
             try {
+              setLoadingMessage('Deleting user...');
+              setLoading(true);
               const response = await apiConnector.request(`Beat/users/delete/${user.id}`, {
                 method: 'DELETE',
               });
@@ -322,6 +341,9 @@ const UserManagement = () => {
             } catch (error) {
               console.error('Error deleting user:', error);
               Alert.alert('Error', 'An unexpected error occurred');
+            } finally {
+              setLoading(false);
+              setLoadingMessage(null);
             }
           },
         },
@@ -778,6 +800,16 @@ const UserManagement = () => {
           </ScrollView>
         </View>
       </Modal>
+
+      {/* Fullscreen loader modal */}
+      <Modal visible={loading} transparent animationType="fade">
+        <View style={styles.loaderOverlay}>
+          <View style={styles.loaderContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.loaderText}>{loadingMessage || 'Please wait...'}</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1076,6 +1108,23 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 8,
     textAlign: 'center',
+  },
+  loaderOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderContent: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  loaderText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 16,
   },
 });
 

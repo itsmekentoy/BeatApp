@@ -2,16 +2,17 @@ import { File, Paths } from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 
@@ -19,6 +20,7 @@ export default function ServerConfig() {
   const router = useRouter();
   const [serverIP, setServerIP] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
   const validateIPAddress = (ip: string) => {
@@ -56,6 +58,7 @@ export default function ServerConfig() {
     }
 
     try {
+      setLoadingMessage('Connecting to server...');
       setLoading(true);
 
       const formattedIP = serverIP.startsWith('http://') || serverIP.startsWith('https://') ? serverIP : `http://${serverIP}`;
@@ -84,6 +87,7 @@ export default function ServerConfig() {
       Alert.alert('Error', 'Failed to connect to the server. Please try again.');
     } finally {
       setLoading(false);
+      setLoadingMessage(null);
     }
   };
 
@@ -92,6 +96,9 @@ export default function ServerConfig() {
       const file = new File(Paths.cache, 'serverConfig.txt');
 
       if (file.exists) {
+        setLoadingMessage('Verifying server configuration...');
+        setLoading(true);
+
         const content = file.textSync();
         console.log('Loaded server configuration:', content);
 
@@ -110,6 +117,9 @@ export default function ServerConfig() {
     } catch (error) {
       console.error('Error checking server configuration:', error);
       Alert.alert('Error', 'Failed to verify server configuration. Please try again.');
+    } finally {
+      setLoading(false);
+      setLoadingMessage(null);
     }
   };
 
@@ -178,6 +188,16 @@ export default function ServerConfig() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Fullscreen loader modal (same design as Customer list) */}
+      <Modal visible={loading} transparent animationType="fade">
+        <View style={styles.loaderOverlay}>
+          <View style={styles.loaderContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.loaderText}>{loadingMessage || 'Please wait...'}</Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -293,5 +313,22 @@ const styles = StyleSheet.create({
   },
   buttonIcon: {
     marginLeft: 8,
+  },
+  loaderOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderContent: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  loaderText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 16,
   },
 });

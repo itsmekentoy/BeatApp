@@ -82,6 +82,7 @@ const ViewCustomer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const isFocused = useIsFocused();
   const [deleting, setDeleting] = useState(false);
+  const [terminating, setTerminating] = useState(false);
   // Freeze modal states
   const [freezeModalVisible, setFreezeModalVisible] = useState(false);
   const [freezeMonths, setFreezeMonths] = useState('1');
@@ -183,8 +184,7 @@ const ViewCustomer: React.FC = () => {
       }
 
       const resp = await apiConnector.request(`Beat/customer/unfreeze/${id}`, {
-        method: 'POST',
-        body: fd,
+        method: 'GET'
       });
 
       const json = await resp.json();
@@ -227,6 +227,33 @@ const ViewCustomer: React.FC = () => {
       Alert.alert('Error', 'Failed to delete customer');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleTerminateCustomer = async (id: string | number) => {
+    if (!id) {
+      Alert.alert('Error', 'Missing customer id');
+      return;
+    }
+
+    setTerminating(true);
+    try {
+      // Terminate membership via GET per backend requirement
+      const resp = await apiConnector.request(`Beat/customer/terminate/${id}`, { method: 'GET' });
+      const json = await resp.json();
+      if (json && (json.status === 'success' || json.success)) {
+        Alert.alert('Terminated', 'Membership has been terminated.', [
+          { text: 'OK', onPress: () => fetchCustomer(id) }
+        ]);
+      } else {
+        console.warn('Terminate response:', json);
+        Alert.alert('Error', json?.message || 'Failed to terminate membership');
+      }
+    } catch (err) {
+      console.error('Failed to terminate membership:', err);
+      Alert.alert('Error', 'Failed to terminate membership');
+    } finally {
+      setTerminating(false);
     }
   };
 
@@ -391,6 +418,16 @@ const ViewCustomer: React.FC = () => {
         </View>
       </Modal>
 
+      {/* Terminating overlay */}
+      <Modal visible={terminating} transparent animationType="fade">
+        <View style={styles.loaderOverlay}>
+          <View style={styles.loaderContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.loaderText}>Terminating membership...</Text>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={[
@@ -475,7 +512,7 @@ const ViewCustomer: React.FC = () => {
             </View>
             <View style={styles.membershipButtonDivider} />
             <View style={styles.membershipButtonRow}>
-              {loginData?.permissions?.some((p) => p.permission === '5' && p.is_granted === 1) && (
+              {loginData?.permissions?.some((p) => p.permission === '5' && p.is_granted === 1) && !customer?.is_terminated && (
                 <TouchableOpacity
                   style={[styles.membershipActionButton, styles.transactionButton, isTablet && styles.membershipActionButtonTablet]}
                   onPress={() => router.push({
@@ -490,7 +527,7 @@ const ViewCustomer: React.FC = () => {
                 </TouchableOpacity>
               )}
 
-              {hasEditCustomerPermission && (
+              {hasEditCustomerPermission && !customer?.is_terminated && (
                 <>
                   <TouchableOpacity
                     style={[styles.membershipActionButton, styles.editButton, isTablet && styles.membershipActionButtonTablet]}
@@ -521,7 +558,15 @@ const ViewCustomer: React.FC = () => {
 
                   <TouchableOpacity
                     style={[styles.membershipActionButton, styles.terminateButton, isTablet && styles.membershipActionButtonTablet]}
-                    onPress={() => Alert.alert('Terminate Membership', 'Are you sure you want to terminate this membership?')}
+                    onPress={() => Alert.alert(
+                      'Terminate Membership',
+                      'Are you sure you want to terminate this membership?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Terminate', style: 'destructive', onPress: () => handleTerminateCustomer(customerId) }
+                      ],
+                      { cancelable: true }
+                    )}
                   >
                     <Icon name="close-circle-outline" size={isTablet ? 20 : 18} color="#fff" />
                     <Text style={[styles.membershipActionButtonText, isTablet && { fontSize: 12 }]}>

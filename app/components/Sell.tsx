@@ -2,6 +2,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -61,6 +62,8 @@ export default function Sell() {
   const [isTransactionModalVisible, setIsTransactionModalVisible] = useState(false);
   // Fetch sold products (transactions)
   const fetchSoldProducts = async () => {
+    setLoadingMessage('Loading sold products...');
+    setLoading(true);
     try {
       const response = await apiConnector.request('Beat/sold-products');
       if (response.ok) {
@@ -72,10 +75,15 @@ export default function Sell() {
     } catch (error) {
       console.error('Error fetching sold products:', error);
       Alert.alert('Error', 'An unexpected error occurred');
+    } finally {
+      setLoading(false);
+      setLoadingMessage(null);
     }
   };
 
   const [isSellModalVisible, setIsSellModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilterCategory, setSelectedFilterCategory] = useState('All');
@@ -92,7 +100,7 @@ export default function Sell() {
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
       const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           product.description.toLowerCase().includes(searchQuery.toLowerCase());
+        product.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = selectedFilterCategory === 'All' || product.category === selectedFilterCategory;
       return matchesSearch && matchesCategory;
     });
@@ -164,6 +172,8 @@ export default function Sell() {
         setCart([]);
         setTotalPrice(0);
         setIsSellModalVisible(false);
+        // Refresh sold products list so the newly completed sale appears
+        await fetchSoldProducts();
         Alert.alert('Success', 'Sale completed successfully');
       } else {
         const errorData = await response.json();
@@ -330,14 +340,14 @@ export default function Sell() {
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16, alignItems: 'center' }}>
         <TouchableOpacity onPress={() => setShowStartPicker(true)} style={{ flex: 1 }}>
           <Text style={styles.label}>Start Date</Text>
-          <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}> 
+          <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
             <Text>{startDate ? startDate.toLocaleDateString() : 'Select start date'}</Text>
             <Icon name="calendar-outline" size={20} color="#666" />
           </View>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setShowEndPicker(true)} style={{ flex: 1 }}>
           <Text style={styles.label}>End Date</Text>
-          <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}> 
+          <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
             <Text>{endDate ? endDate.toLocaleDateString() : 'Select end date'}</Text>
             <Icon name="calendar-outline" size={20} color="#666" />
           </View>
@@ -436,6 +446,16 @@ export default function Sell() {
 
       {/* Sell Product Modal */}
       {renderSellModal()}
+
+      {/* Fullscreen loader modal for sold products */}
+      <Modal visible={loading} transparent animationType="fade">
+        <View style={styles.loaderOverlay}>
+          <View style={styles.loaderContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.loaderText}>{loadingMessage || 'Please wait...'}</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1075,6 +1095,23 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
     borderRadius: 4,
     marginBottom: 16,
+  },
+  loaderOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderContent: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  loaderText: {
+    color: '#fff',
+    marginTop: 10,
+    fontSize: 16,
   },
 });
 
