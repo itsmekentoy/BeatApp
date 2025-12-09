@@ -93,7 +93,7 @@ const Customer: React.FC = () => {
       >
         <View style={styles.row}>
           <Text style={styles.name}>{`${item.firstname} ${item.lastname}`}</Text>
-          <Text style={[styles.status, { color: getStatusColor(status) }]}>{status}</Text>
+          
         </View>
         <View style={styles.row}>
           <Text style={styles.label}>Expiry:</Text>
